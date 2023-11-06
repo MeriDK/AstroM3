@@ -179,6 +179,8 @@ def get_data_args(notebook=False):
 
     parser.add_argument('--L', type=int, default=200,
                         help='training sequence length')
+    parser.add_argument('--dir', type=str, default='./data',
+                        help='dataset directory (default: ./data/)')
     parser.add_argument('--input', type=str, default='macho_raw.pkl',
                         help='dataset filename. file is expected in ./data/')
     parser.add_argument('--output', type=str, default='macho',
@@ -210,7 +212,7 @@ def main():
     args = get_data_args()
     np.random.seed(args.seed)
 
-    data = joblib.load('data/{}'.format(args.input))
+    data = joblib.load(f'{args.dir}/{args.input}')
     data, all_labels, n_classes, n_inputs, label_to_num = sanitize_data(data, args)
 
     unique_label, count = np.unique([lc.label for lc in data], return_counts=True)
