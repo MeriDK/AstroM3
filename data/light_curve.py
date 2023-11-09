@@ -88,13 +88,22 @@ class LightCurve:
         except ValueError:
             self.ss_resid = np.inf
 
-    def period_fold(self, p=None):
+    def period_fold(self, p=None, normalize=False):
+        """
+        Fold light curve on period p.
+        If p is None, use self.p.
+        If normalize is True, phase ranges from 0 to 1, else 0 to p.
+        """
         self.times_copy = np.copy(self.times)
         self.measurements_copy = np.copy(self.measurements)
         self.errors_copy = np.copy(self.errors)
         if p is None:
             p = self.p
-        self.times = self.times % p
+
+        # source phase ranges from 0 to 1
+        # if normalize is True, else 0 to p
+        norm = 1 if not normalize else p    
+        self.times = (self.times % p) / norm
         inds = np.argsort(self.times)
         self.times = self.times[inds]
         self.measurements = self.measurements[inds]

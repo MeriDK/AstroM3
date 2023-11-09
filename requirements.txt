@@ -19,6 +19,7 @@ beautifulsoup4
 bleach
 Brotli
 certifi==2022.12.7
+cesium==0.12.1
 cffi
 chardet==5.1.0
 charset-normalizer==2.1.1
