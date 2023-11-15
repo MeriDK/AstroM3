@@ -88,5 +88,6 @@ Optionally:
 Other tasks:
 - [ ] Move everyting from jupyter notebooks to python files
 - [ ] Add weights \& biases
+- [ ] Add learning rate scheduler
 
 
