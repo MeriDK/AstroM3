@@ -27,6 +27,7 @@ def main():
         prediction_length=prediction_length,
         context_length=window_length - prediction_length - 7,  # 7 is max(lags) for default lags
         num_time_features=1,
+        num_static_real_features=3,
         encoder_layers=2,
         decoder_layers=2,
         d_model=64,

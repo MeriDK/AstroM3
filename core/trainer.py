@@ -14,7 +14,7 @@ class PredictionTrainer:
         self.device = device
 
     def step(self, batch):
-        past_times, future_times, past_values, future_values, past_mask, future_mask, _ = batch
+        past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
 
         outputs = self.model(
             past_time_features=past_times.to(self.device),
@@ -23,6 +23,7 @@ class PredictionTrainer:
             future_values=future_values.to(self.device),
             past_observed_mask=past_mask.to(self.device),
             future_observed_mask=future_mask.to(self.device),
+            static_real_features=aux.to(self.device)
         )
 
         return outputs
@@ -68,13 +69,14 @@ class PredictionTrainer:
 
         for idx, batch in enumerate(tqdm(val_dataloader)):
             with torch.no_grad():
-                past_times, future_times, past_values, future_values, past_mask, future_mask, label = batch
+                past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
 
                 outputs = self.model.generate(
                     past_time_features=past_times.to(self.device),
                     past_values=past_values.to(self.device),
                     future_time_features=future_times.to(self.device),
                     past_observed_mask=past_mask.to(self.device),
+                    static_real_features=aux.to(self.device)
                 )
 
                 forecasts.append(outputs.sequences.cpu().numpy())
@@ -92,7 +94,7 @@ class PredictionTrainer:
         smape_metrics = []
 
         for i, ts in enumerate(tqdm(val_dataset)):
-            _, _, past_values, future_values, _, _, _ = val_dataset[i]
+            _, _, past_values, future_values, _, _, _, _ = val_dataset[i]
 
             mase = mase_metric.compute(
                 predictions=forecasts[i],
@@ -109,7 +111,7 @@ class PredictionTrainer:
 
         return np.mean(mase_metrics), np.mean(smape_metrics)
 
-    # TODO combine functions get forecasts and get metrics into one
+    # TODO Combine these 2 functions
     def evaluate(self, val_dataloader, val_dataset):
         self.model.eval()
 
@@ -133,12 +135,12 @@ class ClassificationTrainer:
         total_predictions = 0
 
         for batch in train_dataloader:
-            past_times, future_times, past_values, future_values, past_mask, future_mask, labels = batch
+            past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
             labels = labels.to(self.device)
 
             self.optimizer.zero_grad()
 
-            logits = self.model(past_times, past_values, future_times, past_mask)
+            logits = self.model(past_times, past_values, future_times, past_mask, aux)
             loss = self.criterion(logits, labels)
             total_loss.append(loss.item())
 
@@ -162,10 +164,10 @@ class ClassificationTrainer:
 
         with torch.no_grad():
             for batch in val_dataloader:
-                past_times, future_times, past_values, future_values, past_mask, future_mask, labels = batch
+                past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
                 labels = labels.to(self.device)
 
-                logits = self.model(past_times, past_values, future_times, past_mask)
+                logits = self.model(past_times, past_values, future_times, past_mask, aux)
                 loss = self.criterion(logits, labels)
                 total_loss.append(loss.item())
 
@@ -203,10 +205,10 @@ class ClassificationTrainer:
 
         for batch in val_dataloader:
             with torch.no_grad():
-                past_times, future_times, past_values, future_values, past_mask, future_mask, label = batch
+                past_times, future_times, past_values, future_values, past_mask, future_mask, aux, label = batch
                 label = label.to(self.device)
 
-                logits = self.model(past_times, past_values, future_times, past_mask)
+                logits = self.model(past_times, past_values, future_times, past_mask, aux)
                 probabilities = torch.nn.functional.softmax(logits, dim=1)
                 _, predicted_labels = torch.max(probabilities, dim=1)
 

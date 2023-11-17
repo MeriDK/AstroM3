@@ -13,12 +13,13 @@ class ClassificationModel(nn.Module):
         self.classifier = nn.Linear(hidden_size, num_labels)
         self.classifier.to(self.device)
 
-    def forward(self, past_times, past_values, future_times, past_mask):
+    def forward(self, past_times, past_values, future_times, past_mask, aux):
         outputs = self.pretrained_model(
             past_time_features=past_times.to(self.device),
             past_values=past_values.to(self.device),
             future_time_features=future_times.to(self.device),
             past_observed_mask=past_mask.to(self.device),
+            static_real_features=aux.to(self.device)
         )
 
         # embedding = torch.mean(outputs.encoder_last_hidden_state, dim=1)

@@ -23,9 +23,10 @@ class MachoDataset(Dataset):
         future_values = torch.tensor(self.values[idx, -self.prediction_length:], dtype=torch.float)
         past_mask = torch.ones(past_times.shape, dtype=torch.float)
         future_mask = torch.ones(future_times.shape, dtype=torch.float)
+        aux = torch.tensor(self.aux[idx], dtype=torch.long)
         labels = torch.tensor(self.labels[idx], dtype=torch.long)
 
         past_times = past_times.unsqueeze(-1)
         future_times = future_times.unsqueeze(-1)
 
-        return past_times, future_times, past_values, future_values, past_mask, future_mask, labels
+        return past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels
