@@ -52,7 +52,7 @@ class MachoDataset(Dataset):
 
         past_mask = torch.ones(past_times.shape, dtype=torch.float)
         future_mask = torch.ones(future_times.shape, dtype=torch.float)
-        aux = torch.tensor(self.aux[idx], dtype=torch.long)
+        aux = torch.tensor(self.aux[idx], dtype=torch.float)
         labels = torch.tensor(self.labels[idx], dtype=torch.long)
 
         past_times = past_times.unsqueeze(-1)
