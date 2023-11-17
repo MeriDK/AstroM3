@@ -181,18 +181,10 @@ class ClassificationTrainer:
         return sum(total_loss) / len(total_loss), total_correct_predictions / total_predictions
 
     def train(self, train_dataloader, val_dataloader, epochs):
-        train_losses, val_losses = [], []
-        train_accuracies, val_accuracies = [], []
 
         for epoch in range(epochs):
-
             train_loss, train_acc = self.train_epoch(train_dataloader)
-            train_losses.append(train_loss)
-            train_accuracies.append(train_acc)
-
             val_loss, val_acc = self.val_epoch(val_dataloader)
-            val_losses.append(val_loss)
-            val_accuracies.append(val_acc)
 
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
@@ -215,13 +207,25 @@ class ClassificationTrainer:
                 all_true_labels.extend(label.cpu().numpy())
                 all_predicted_labels.extend(predicted_labels.cpu().numpy())
 
+        # Calculate confusion matrix
         conf_matrix = confusion_matrix(all_true_labels, all_predicted_labels)
-        plt.figure(figsize=(10, 7))
-        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues')
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
-        plt.title('Confusion Matrix')
+
+        # Calculate percentage values for confusion matrix
+        conf_matrix_percent = conf_matrix / conf_matrix.sum(axis=1)[:, np.newaxis]
+
+        # Plot both confusion matrices side by side
+        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 7))
+
+        # Plot absolute values confusion matrix
+        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=axes[0])
+        axes[0].set_xlabel('Predicted')
+        axes[0].set_ylabel('True')
+        axes[0].set_title('Confusion Matrix - Absolute Values')
+
+        # Plot percentage values confusion matrix
+        sns.heatmap(conf_matrix_percent, annot=True, fmt='.2%', cmap='Blues', ax=axes[1])
+        axes[1].set_xlabel('Predicted')
+        axes[1].set_ylabel('True')
+        axes[1].set_title('Confusion Matrix - Percentages')
+
         plt.show()
-
-
-
