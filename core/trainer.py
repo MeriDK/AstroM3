@@ -5,6 +5,7 @@ from evaluate import load
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
+import wandb
 
 
 class PredictionTrainer:
@@ -62,6 +63,7 @@ class PredictionTrainer:
             train_loss = self.train_epoch(train_dataloader)
             val_loss = self.val_epoch(val_dataloader)
 
+            wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'epoch': epoch})
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} Val Loss {round(val_loss, 4)}')
 
     def get_forecasts(self, val_dataloader):
@@ -118,6 +120,7 @@ class PredictionTrainer:
         forecasts = self.get_forecasts(val_dataloader)
         mase, smape = self.get_metrics(val_dataset, forecasts)
 
+        wandb.log({'MASE': mase, 'sMAPE': smape})
         print(f'MASE: {mase} sMAPE: {smape}')
 
 
@@ -186,6 +189,8 @@ class ClassificationTrainer:
             train_loss, train_acc = self.train_epoch(train_dataloader)
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
+            wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
+                       'epoch': epoch})
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
 
@@ -228,4 +233,5 @@ class ClassificationTrainer:
         axes[1].set_ylabel('True')
         axes[1].set_title('Confusion Matrix - Percentages')
 
+        wandb.log({'conf_matrix': wandb.Image(fig)})
         plt.show()
