@@ -9,10 +9,11 @@ import wandb
 
 
 class PredictionTrainer:
-    def __init__(self, model, optimizer, device):
+    def __init__(self, model, optimizer, device, use_wandb=False):
         self.model = model
         self.optimizer = optimizer
         self.device = device
+        self.use_wandb = use_wandb
 
     def step(self, batch):
         past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
@@ -63,9 +64,11 @@ class PredictionTrainer:
             train_loss = self.train_epoch(train_dataloader)
             val_loss = self.val_epoch(val_dataloader)
 
-            wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'epoch': epoch})
+            if self.use_wandb:
+                wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'epoch': epoch})
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} Val Loss {round(val_loss, 4)}')
 
+    # TODO Fix cuda out of memory
     def get_forecasts(self, val_dataloader):
         forecasts = []
 
@@ -120,16 +123,19 @@ class PredictionTrainer:
         forecasts = self.get_forecasts(val_dataloader)
         mase, smape = self.get_metrics(val_dataset, forecasts)
 
-        wandb.log({'MASE': mase, 'sMAPE': smape})
+        if self.use_wandb:
+            wandb.log({'MASE': mase, 'sMAPE': smape})
         print(f'MASE: {mase} sMAPE: {smape}')
 
 
 class ClassificationTrainer:
-    def __init__(self, model, optimizer, criterion, device):
+    def __init__(self, model, optimizer, scheduler, criterion, device, use_wandb=False):
         self.model = model
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.criterion = criterion
         self.device = device
+        self.use_wandb = use_wandb
 
     def train_epoch(self, train_dataloader):
         self.model.train()
@@ -189,8 +195,12 @@ class ClassificationTrainer:
             train_loss, train_acc = self.train_epoch(train_dataloader)
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
-            wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
-                       'epoch': epoch})
+            self.scheduler.step(val_loss)
+            current_lr = self.optimizer.param_groups[0]['lr']
+
+            if self.use_wandb:
+                wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
+                           'learning_rate': current_lr, 'epoch': epoch})
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
 
@@ -233,5 +243,5 @@ class ClassificationTrainer:
         axes[1].set_ylabel('True')
         axes[1].set_title('Confusion Matrix - Percentages')
 
-        wandb.log({'conf_matrix': wandb.Image(fig)})
-        plt.show()
+        if self.use_wandb:
+            wandb.log({'conf_matrix': wandb.Image(fig)})
