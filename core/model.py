@@ -3,14 +3,15 @@ from transformers import TimeSeriesTransformerForPrediction
 
 
 class ClassificationModel(nn.Module):
-    def __init__(self, pretrained_model_path, device, hidden_size=64, num_labels=8):
+    def __init__(self, pretrained_model_path, device, num_labels=8):
         super(ClassificationModel, self).__init__()
 
         self.pretrained_model = TimeSeriesTransformerForPrediction.from_pretrained(pretrained_model_path)
+        print(f'Loaded TimeSeriesTransformer from {pretrained_model_path}')
         self.pretrained_model.to(device)
         self.device = device
 
-        self.classifier = nn.Linear(hidden_size, num_labels)
+        self.classifier = nn.Linear(self.pretrained_model.config.d_model, num_labels)
         self.classifier.to(self.device)
 
     def forward(self, past_times, past_values, future_times, past_mask, aux):
