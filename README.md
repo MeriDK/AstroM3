@@ -83,5 +83,11 @@ Step 5. Transfer everything to our real world data.
 
 Optionally:
 - [ ] Add scripts for loading ASAS-SN and OGLE-III
-- [ ] Repeat the experiments from Step 1 and Step 2 with ASAS-SN and OGLE-III 
+- [ ] Repeat the experiments from Step 1 and Step 2 with ASAS-SN and OGLE-III
+
+Other tasks:
+- [ ] Move everyting from jupyter notebooks to python files
+- [ ] Add weights \& biases
+- [ ] Add learning rate scheduler
+
 
