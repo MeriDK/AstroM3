@@ -41,7 +41,7 @@ raw_data_files = {
 }
 
 # These are the columns in the two datafiles that can be used
-# for an auxiliary input to a network. They are parameters that 
+# for an auxiliary input to a network. They are parameters that
 # informative about the class/representation of the source.
 metadata_cols = {
     "g": [
@@ -398,7 +398,7 @@ class ASASSNVarStarDataset(Dataset):
                 ).drop_duplicates(keep="last", ignore_index=True)
             else:
                 merged = self.period_recalc_df
-            with self.lock:    
+            with self.lock:
                 merged.to_csv(self.data_root / self.period_cache, index=False)
             if self.verbose:
                 print("Wrote period cache file.")
@@ -582,7 +582,7 @@ class ASASSNVarStarDataset(Dataset):
 
     def get_light_curves(self, rows):
         """Given df row(s), return the light curves as numpy arrays
-        
+
         Parameters:
         -----------
         rows: a pandas dataframe row or rows
@@ -663,7 +663,7 @@ class ASASSNVarStarDataset(Dataset):
 
     def get_spectra(self, rows):
         """Given df row(s), return the spectra as numpy arrays
-        
+
         Parameters:
         -----------
         rows: a pandas dataframe row or row
@@ -742,14 +742,12 @@ class ASASSNVarStarDataset(Dataset):
         for band in self.use_bands:
             self.target_all += target_cols[band]
 
-        targets = self.df[[target_cols[band][0] for band in self.use_bands]].values.ravel()
+        targets = self.df[
+            [target_cols[band][0] for band in self.use_bands]
+        ].values.ravel()
         targets = targets[~pd.isnull(targets)]
 
-        self.target_lookup = {
-            i: x
-            for i, x in enumerate(
-                np.unique(targets))
-        }
+        self.target_lookup = {i: x for i, x in enumerate(np.unique(targets))}
 
     def _readLRSFits(self, filename, z_corr=True):
         """
