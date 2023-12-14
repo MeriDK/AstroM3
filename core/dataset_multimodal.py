@@ -40,6 +40,9 @@ raw_data_files = {
     },
 }
 
+# These are the columns in the two datafiles that can be used
+# for an auxiliary input to a network. They are parameters that 
+# informative about the class/representation of the source.
 metadata_cols = {
     "g": [
         "Mean_gmag",
@@ -184,7 +187,26 @@ def collate_fn(
     batch, data_keys=["lcs", "metadata", "spectra", "classes"], fill_value=-9999
 ):
     """
-    return a list of tensors with data and masks, for this batch
+    return a list of tensors with data and masks, for this batch. Makes the
+    smallest possible tensors given the maximum size of each element in the batch.
+
+    See https://pytorch.org/docs/stable/data.html#dataloader-collate-fn
+
+    Parameters:
+    -----------
+    batch: list of dicts
+        each dict is a single object
+    data_keys: list of strings
+        which keys to return
+    fill_value: float
+        value to use for missing data
+
+    Returns:
+    --------
+    data: list of tensors
+        the data for each key
+    masks: list of tensors
+        the masks for each key
     """
     data = []
     masks = []
@@ -288,29 +310,31 @@ class ASASSNVarStarDataset(Dataset):
         """
         Multi-modal ASAS-SN dataset of variable stars
 
-        data_root = root directory of the data (Path object)
-        prediction_length = max length of the prediction window (in numbers of time points)
-        mode = bookkeeping column to use to split the data into train/val/test
-        use_errors = use the reported errors in the light curves
-        use_bands = which bands to use. Must be a list of one or two bands.
-                    Default: ["v", "g"]
-        merge_type = SQL style for how to merge the two bands. Default: "inner"
-        lc_type = "flux" or "mag". Default: "flux"
-        return_phased = return the phased light curve instead of the original light curves
-        lock_phase = if not None, use the period from this band to phase both bands
-        clean = remove outliers from the light curves
-        recalc_period = refit the L-S to find the best period and save the period to disk
-        verbose = print out more information
-        lamost_spec_file = filename of the LAMOST spectra csv
-        lamost_spec_dir = directory of the LAMOST spectra
-        only_sources_with_spectra = only keep sources that have spectra
-        prime = prime the tarballs by doing an initial scan
-        initial_clean_clip = initial outlier clip parameters (used if `clean` is True)
-        only_periodic = only keep sources that are marked as periodic
-        period_cache = filename of the period cache csv (used if `recalc_period` is True)
-        return_items_as_list = return the items as a list instead of a dictionary
-        fill_value = value to use for missing data
-        lockfile = lockfile for the zip files
+        Parameters:
+        -----------
+            data_root = root directory of the data (Path object)
+            prediction_length = max length of the prediction window (in numbers of time points)
+            mode = bookkeeping column to use to split the data into train/val/test
+            use_errors = use the reported errors in the light curves
+            use_bands = which bands to use. Must be a list of one or two bands.
+                        Default: ["v", "g"]
+            merge_type = SQL style for how to merge the two bands. Default: "inner"
+            lc_type = "flux" or "mag". Default: "flux"
+            return_phased = return the phased light curve instead of the original light curves
+            lock_phase = if not None, use the period from this band to phase both bands
+            clean = remove outliers from the light curves
+            recalc_period = refit the L-S to find the best period and save the period to disk
+            verbose = print out more information
+            lamost_spec_file = filename of the LAMOST spectra csv
+            lamost_spec_dir = directory of the LAMOST spectra
+            only_sources_with_spectra = only keep sources that have spectra
+            prime = prime the tarballs by doing an initial scan
+            initial_clean_clip = initial outlier clip parameters (used if `clean` is True)
+            only_periodic = only keep sources that are marked as periodic
+            period_cache = filename of the period cache csv (used if `recalc_period` is True)
+            return_items_as_list = return the items as a list instead of a dictionary
+            fill_value = value to use for missing data
+            lockfile = lockfile for the zip files
         """
         self.data_root = data_root
         self.prediction_length = prediction_length
@@ -360,16 +384,22 @@ class ASASSNVarStarDataset(Dataset):
         self.df = self.df.sample(frac=1, random_state=self.rng)
 
     def __del__(self):
+        """
+        Before removing this instance, save the periods calculated during this time
+        merging the new data with the existing period data on disk
+        """
         if self.recalc_period and self.period_cache is not None:
             # read in what's on disk just in case it changed by another process.
             if (self.data_root / self.period_cache).exists():
-                tmp = pd.read_csv(self.data_root / self.period_cache)
+                with self.lock:
+                    tmp = pd.read_csv(self.data_root / self.period_cache)
                 merged = pd.concat(
                     [tmp, self.period_recalc_df], ignore_index=True
                 ).drop_duplicates(keep="last", ignore_index=True)
             else:
                 merged = self.period_recalc_df
-            merged.to_csv(self.data_root / self.period_cache, index=False)
+            with self.lock:    
+                merged.to_csv(self.data_root / self.period_cache, index=False)
             if self.verbose:
                 print("Wrote period cache file.")
 
@@ -540,7 +570,10 @@ class ASASSNVarStarDataset(Dataset):
             )
 
     def _prime(self):
-        """This takes about 1 minute. After that getting light curves is fast"""
+        """
+        The first time that the light curve tarball is opened, we need to
+        scan it. This takes about 1 minute. After that getting light curves is fast.
+        """
         if self.verbose:
             print("Priming tarballs by doing initial scan...", flush=True, end="")
         self.get_light_curves(self.df.sample(random_state=self.rng))
@@ -548,7 +581,16 @@ class ASASSNVarStarDataset(Dataset):
             print("done.", flush=True)
 
     def get_light_curves(self, rows):
-        """Given df row(s), return the light curves as numpy arrays"""
+        """Given df row(s), return the light curves as numpy arrays
+        
+        Parameters:
+        -----------
+        rows: a pandas dataframe row or rows
+
+        Returns:
+        --------
+        light_curves: a list of numpy arrays
+        """
 
         light_curves = []
         for ind, row in rows.iterrows():
@@ -620,7 +662,16 @@ class ASASSNVarStarDataset(Dataset):
         return light_curves
 
     def get_spectra(self, rows):
-        """Given df row(s), return the spectra as numpy arrays"""
+        """Given df row(s), return the spectra as numpy arrays
+        
+        Parameters:
+        -----------
+        rows: a pandas dataframe row or row
+
+        Returns:
+        --------
+        spectra: a list of numpy arrays
+        """
         spectra = []
         for ind, row in rows.iterrows():
             row_spectra = []
@@ -704,6 +755,18 @@ class ASASSNVarStarDataset(Dataset):
         """
         Read LAMOST fits file
           adapted from https://github.com/fandongwei/pylamost
+
+        Parameters:
+        -----------
+        filename: str
+          name of the fits file
+        z_corr: bool.
+          if True, correct for measured radial velocity of star
+
+        Returns:
+        --------
+        spec: numpy array
+          wavelength, flux, inverse variance
         """
 
         hdulist = fits.open(filename)
@@ -738,7 +801,7 @@ class ASASSNVarStarDataset(Dataset):
 
     def _check_and_open_data_files(self):
         """
-        Check that the data files exist and open them
+        Check that the data files exist and open them.
         """
         if len(self.use_bands) == 0:
             raise Exception("Need a least one bandpass to use")
