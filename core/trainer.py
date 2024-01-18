@@ -9,14 +9,16 @@ import wandb
 
 
 class PredictionTrainer:
-    def __init__(self, model, optimizer, device, use_wandb=False):
+    def __init__(self, model, optimizer, scheduler, device, use_wandb=False):
         self.model = model
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.device = device
         self.use_wandb = use_wandb
 
     def step(self, batch):
         past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
+        static_real_features = aux.to(self.device) if self.model.config.num_static_real_features else None
 
         outputs = self.model(
             past_time_features=past_times.to(self.device),
@@ -25,7 +27,7 @@ class PredictionTrainer:
             future_values=future_values.to(self.device),
             past_observed_mask=past_mask.to(self.device),
             future_observed_mask=future_mask.to(self.device),
-            static_real_features=aux.to(self.device)
+            static_real_features=static_real_features
         )
 
         return outputs
@@ -61,11 +63,15 @@ class PredictionTrainer:
     def train(self, train_dataloader, val_dataloader, epochs):
 
         for epoch in range(epochs):
-            train_loss = self.train_epoch(train_dataloader)
+            self.train_epoch(train_dataloader)
+            train_loss = self.val_epoch(train_dataloader)
             val_loss = self.val_epoch(val_dataloader)
 
+            self.scheduler.step(val_loss)
+            current_lr = self.optimizer.param_groups[0]['lr']
+
             if self.use_wandb:
-                wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'epoch': epoch})
+                wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'learning_rate': current_lr, 'epoch': epoch})
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} Val Loss {round(val_loss, 4)}')
 
     # TODO Fix cuda out of memory
@@ -75,13 +81,14 @@ class PredictionTrainer:
         for idx, batch in enumerate(tqdm(val_dataloader)):
             with torch.no_grad():
                 past_times, future_times, past_values, future_values, past_mask, future_mask, aux, labels = batch
+                static_real_features = aux.to(self.device) if self.model.config.num_static_real_features else None
 
                 outputs = self.model.generate(
                     past_time_features=past_times.to(self.device),
                     past_values=past_values.to(self.device),
                     future_time_features=future_times.to(self.device),
                     past_observed_mask=past_mask.to(self.device),
-                    static_real_features=aux.to(self.device)
+                    static_real_features=static_real_features
                 )
 
                 forecasts.append(outputs.sequences.cpu().numpy())
@@ -192,7 +199,8 @@ class ClassificationTrainer:
     def train(self, train_dataloader, val_dataloader, epochs):
 
         for epoch in range(epochs):
-            train_loss, train_acc = self.train_epoch(train_dataloader)
+            self.train_epoch(train_dataloader)
+            train_loss, train_acc = self.val_epoch(train_dataloader)
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
             self.scheduler.step(val_loss)
