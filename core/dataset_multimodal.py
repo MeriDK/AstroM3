@@ -284,8 +284,10 @@ class ASASSNVarStarDataset(Dataset):
     def __init__(
         self,
         data_root,
-        prediction_length,
-        mode="train",
+        prediction_length=10,
+        mode=None,
+        train_split=0.8,
+        val_split=0.1,
         use_errors=True,
         use_bands=["v", "g"],
         merge_type="inner",
@@ -338,6 +340,9 @@ class ASASSNVarStarDataset(Dataset):
         """
         self.data_root = data_root
         self.prediction_length = prediction_length
+        self.mode = mode
+        self.train_split = train_split
+        self.val_split = val_split
         self.use_errors = use_errors
         self.return_phased = return_phased
         self.recalc_period = recalc_period
@@ -365,9 +370,6 @@ class ASASSNVarStarDataset(Dataset):
         else:
             self.rng = rng
 
-        self._check_and_open_data_files()
-        self._merge_bands()
-
         if self.recalc_period and self.period_cache is not None:
             fname = self.data_root / self.period_cache
             try:
@@ -377,11 +379,15 @@ class ASASSNVarStarDataset(Dataset):
             except Exception:
                 self.period_recalc_df = pd.DataFrame(columns=["id", "p", "band"])
 
+        # spectra
+        self.spec_df = None
+
+        self._check_and_open_data_files()
+        self._merge_bands()
+        self._split()
+
         if prime:
             self._prime()
-
-        # shuffle
-        self.df = self.df.sample(frac=1, random_state=self.rng)
 
     def __del__(self):
         """
@@ -673,20 +679,21 @@ class ASASSNVarStarDataset(Dataset):
         spectra: a list of numpy arrays
         """
         spectra = []
-        for ind, row in rows.iterrows():
-            row_spectra = []
-            rowid = row[merge_key[self.use_bands[0]]]
-            rez = self.spec_df.query(f"edr3_source_id == '{rowid}'")
-            if len(rez) == 0:
-                spectra.append([])
-                continue
-            for si, spect in rez.iterrows():
-                filename = (
-                    self.data_root / self.lamost_spec_dir / spect["spec_filename"]
-                )
-                if os.path.exists(filename):
-                    row_spectra.append(self._readLRSFits(filename))
-            spectra.append(row_spectra)
+        if self.spec_df:
+            for ind, row in rows.iterrows():
+                row_spectra = []
+                rowid = row[merge_key[self.use_bands[0]]]
+                rez = self.spec_df.query(f"edr3_source_id == '{rowid}'")
+                if len(rez) == 0:
+                    spectra.append([])
+                    continue
+                for si, spect in rez.iterrows():
+                    filename = (
+                        self.data_root / self.lamost_spec_dir / spect["spec_filename"]
+                    )
+                    if os.path.exists(filename):
+                        row_spectra.append(self._readLRSFits(filename))
+                spectra.append(row_spectra)
         return spectra
 
     def _merge_bands(self):
@@ -699,7 +706,7 @@ class ASASSNVarStarDataset(Dataset):
             len(self.use_bands) == 2 and "v" in self.use_bands and "g" in self.use_bands
         ):
             if self.verbose:
-                print("Merging bands...", flush=True, end="")
+                print("Merging bands...", flush=True, end=" ")
             self.df = self.dfs["v"].merge(
                 self.dfs["g"],
                 how=self.merge_type,
@@ -708,7 +715,7 @@ class ASASSNVarStarDataset(Dataset):
                 suffixes=("_vband", "_gband"),
             )
             if self.verbose:
-                print("done.", flush=True)
+                print(f"done. Now {len(self.df)} sources.", flush=True)
 
         else:
             raise Exception("Dont know how to merge these bands")
@@ -716,6 +723,7 @@ class ASASSNVarStarDataset(Dataset):
         if self.only_periodic:
             try:
                 self.df = self.df[self.df["periodic"]]
+                print(f'Removed non-periodic sources. Now {len(self.df)} sources.', flush=True)
             except Exception:
                 print("No `periodic` column in the dataframe. Proceeding.")
 
@@ -748,6 +756,30 @@ class ASASSNVarStarDataset(Dataset):
         targets = targets[~pd.isnull(targets)]
 
         self.target_lookup = {i: x for i, x in enumerate(np.unique(targets))}
+
+    def _split(self):
+        total_size = len(self.df)
+        train_size = int(total_size * self.train_split)
+        val_size = int(total_size * self.val_split)
+        test_size = total_size - train_size - val_size
+
+        if self.verbose:
+            print(f"Total: {total_size}, Train: {train_size}, Val: {val_size}, Test: {test_size}")
+
+        # Shuffling the dataframe
+        shuffled_df = self.df.sample(frac=1, random_state=self.rng)
+
+        # Assigning the split data to df based on mode
+        if self.mode == 'train':
+            self.df = shuffled_df[:train_size]
+        elif self.mode == 'val':
+            self.df = shuffled_df[train_size:train_size + val_size]
+        elif self.mode == 'test':
+            self.df = shuffled_df[train_size + val_size:]
+        elif self.mode is None:
+            self.df = shuffled_df
+        else:
+            raise ValueError("Mode must be None, 'train', 'val', or 'test'")
 
     def _readLRSFits(self, filename, z_corr=True):
         """
