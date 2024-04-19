@@ -383,6 +383,7 @@ class ASASSNVarStarDataset(Dataset):
         self.spec_df = None
 
         self._check_and_open_data_files()
+        self._remove_duplicates()
         self._merge_bands()
         self._split()
 
@@ -581,7 +582,7 @@ class ASASSNVarStarDataset(Dataset):
         scan it. This takes about 1 minute. After that getting light curves is fast.
         """
         if self.verbose:
-            print("Priming tarballs by doing initial scan...", flush=True, end="")
+            print("Priming tarballs by doing initial scan...", flush=True, end=" ")
         self.get_light_curves(self.df.sample(random_state=self.rng))
         if self.verbose:
             print("done.", flush=True)
@@ -679,7 +680,7 @@ class ASASSNVarStarDataset(Dataset):
         spectra: a list of numpy arrays
         """
         spectra = []
-        if self.spec_df:
+        if self.spec_df is not None:
             for ind, row in rows.iterrows():
                 row_spectra = []
                 rowid = row[merge_key[self.use_bands[0]]]
@@ -696,6 +697,19 @@ class ASASSNVarStarDataset(Dataset):
                 spectra.append(row_spectra)
         return spectra
 
+    def _remove_duplicates(self):
+        """
+        Remove duplicates based on edr3 source ids
+        """
+        for band in self.use_bands:
+            if self.verbose:
+                print(f'Removing duplicates for {band} band...', flush=True, end=' ')
+                
+            self.dfs[band] = self.dfs[band].drop_duplicates(subset=[merge_key[band]])
+            
+            if self.verbose:
+                print(f'Left with {len(self.dfs[band])}. done.', flush=True)
+            
     def _merge_bands(self):
         """
         Merge the two bands into a single dataframe
@@ -880,7 +894,7 @@ class ASASSNVarStarDataset(Dataset):
             and (self.data_root / self.lamost_spec_file).exists()
         ):
             if self.verbose:
-                print("Opening spectra csv...", flush=True, end="")
+                print("Opening spectra csv...", flush=True, end=" ")
             self.spec_df = pd.read_csv(self.data_root / self.lamost_spec_file)
             if self.verbose:
                 print("done.", flush=True)
