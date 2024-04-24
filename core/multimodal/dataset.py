@@ -2,6 +2,7 @@ import os
 import logging
 import tarfile
 from io import BytesIO
+import json
 
 import numpy as np
 import pandas as pd
@@ -242,6 +243,7 @@ def collate_fn(
                     last_shape = (1, 1)
                     book.append((on, last_shape))
 
+                # TODO Fix i outside of loop
                 for j in range(i + 1, max_spec):
                     s.append(fill_value * torch.ones(last_shape))
                     ls.append(s[-1].shape)
