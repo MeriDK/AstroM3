@@ -32,7 +32,7 @@ class ClassificationModel(nn.Module):
             static_real_features=static_real_features
         )
 
-        # embedding = torch.mean(outputs.encoder_last_hidden_state, dim=1)
+        # embedding = torch.mean(outpu  ts.encoder_last_hidden_state, dim=1)
         embedding = outputs.encoder_last_hidden_state[:, 0, :]
         logits = self.classifier(embedding)
 
