@@ -183,6 +183,9 @@ period_col = {"g": "Period", "v": "period"}
 # What are the columns in the two datafiles that can be used to uniquely identify a source?
 merge_key = {"g": "EDR3_source_id", "v": "edr3_source_id"}
 
+# Classes from ASAS-SN paper. Except for L, GCAS, YSO, GCAS: and VAR
+filtered_classes = ['CWA', 'CWB', 'DCEP', 'DCEPS', 'DSCT', 'EA', 'EB', 'EW',
+                    'HADS', 'M', 'ROT', 'RRAB', 'RRC', 'RRD', 'RVA', 'SR']
 
 def collate_fn(
     batch, data_keys=["lcs", "metadata", "spectra", "classes"], fill_value=-9999
@@ -292,6 +295,7 @@ class ASASSNVarStarDataset(Dataset):
         val_split=0.1,
         use_errors=True,
         use_bands=["v", "g"],
+        use_classes=filtered_classes,
         merge_type="inner",
         lc_type="flux",
         rng=None,
@@ -322,6 +326,7 @@ class ASASSNVarStarDataset(Dataset):
             use_errors = use the reported errors in the light curves
             use_bands = which bands to use. Must be a list of one or two bands.
                         Default: ["v", "g"]
+            use_classes = which classes to use. If None use all.
             merge_type = SQL style for how to merge the two bands. Default: "inner"
             lc_type = "flux" or "mag". Default: "flux"
             return_phased = return the phased light curve instead of the original light curves
@@ -353,6 +358,7 @@ class ASASSNVarStarDataset(Dataset):
         self.use_bands = use_bands
         if not isinstance(use_bands, list):
             raise Exception("`use_bands` must be a list like ['v', 'g']")
+        self.use_classes = use_classes
         self.merge_type = merge_type
         self.lc_type = lc_type
         self.lamost_spec_file = lamost_spec_file
@@ -386,6 +392,7 @@ class ASASSNVarStarDataset(Dataset):
 
         self._check_and_open_data_files()
         self._remove_duplicates()
+        self._filter_classes()
         self._merge_bands()
         self._split()
 
@@ -711,7 +718,22 @@ class ASASSNVarStarDataset(Dataset):
             
             if self.verbose:
                 print(f'Left with {len(self.dfs[band])}. done.', flush=True)
-            
+
+    def _filter_classes(self):
+        """
+        Remove classes that are not in use_classes
+        """
+        if self.use_classes:
+            for band in self.use_bands:
+                if self.verbose:
+                    print(f'Removing objects that have class different from {self.use_classes} for {band} band...',
+                          flush=True, end=' ')
+
+                self.dfs[band] = self.dfs[band][self.dfs[band][target_cols[band][0]].isin(self.use_classes)]
+
+                if self.verbose:
+                    print(f'Left with {len(self.dfs[band])}. done.', flush=True)
+
     def _merge_bands(self):
         """
         Merge the two bands into a single dataframe
