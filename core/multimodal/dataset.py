@@ -287,33 +287,34 @@ def collate_fn(
 
 class ASASSNVarStarDataset(Dataset):
     def __init__(
-        self,
-        data_root,
-        prediction_length=10,
-        mode=None,
-        train_split=0.8,
-        val_split=0.1,
-        use_errors=True,
-        use_bands=["v", "g"],
-        use_classes=filtered_classes,
-        merge_type="inner",
-        lc_type="flux",
-        rng=None,
-        return_phased=True,
-        lock_phase=None,
-        clean=True,
-        recalc_period=False,
-        verbose=False,
-        lamost_spec_file="Spectra/lamost_spec.csv",
-        lamost_spec_dir="Spectra/v2",
-        only_sources_with_spectra=True,
-        prime=True,
-        initial_clean_clip=[20, 5],
-        only_periodic=True,
-        period_cache="periods.csv",
-        return_items_as_list=False,
-        fill_value=-9999,
-        lockfile="g_band_zip.lock",
+            self,
+            data_root,
+            prediction_length=10,
+            mode=None,
+            train_split=0.8,
+            val_split=0.1,
+            use_errors=True,
+            use_bands=["v", "g"],
+            use_classes=filtered_classes,
+            max_samples=20000,
+            merge_type="inner",
+            lc_type="flux",
+            rng=None,
+            return_phased=True,
+            lock_phase=None,
+            clean=True,
+            recalc_period=False,
+            verbose=False,
+            lamost_spec_file="Spectra/lamost_spec.csv",
+            lamost_spec_dir="Spectra/v2",
+            only_sources_with_spectra=True,
+            prime=True,
+            initial_clean_clip=[20, 5],
+            only_periodic=True,
+            period_cache="periods.csv",
+            return_items_as_list=False,
+            fill_value=-9999,
+            lockfile="g_band_zip.lock",
     ):
         """
         Multi-modal ASAS-SN dataset of variable stars
@@ -327,6 +328,7 @@ class ASASSNVarStarDataset(Dataset):
             use_bands = which bands to use. Must be a list of one or two bands.
                         Default: ["v", "g"]
             use_classes = which classes to use. If None use all.
+            max_samples = limit the upper amount of objects for each class
             merge_type = SQL style for how to merge the two bands. Default: "inner"
             lc_type = "flux" or "mag". Default: "flux"
             return_phased = return the phased light curve instead of the original light curves
@@ -359,6 +361,7 @@ class ASASSNVarStarDataset(Dataset):
         if not isinstance(use_bands, list):
             raise Exception("`use_bands` must be a list like ['v', 'g']")
         self.use_classes = use_classes
+        self.max_samples = max_samples
         self.merge_type = merge_type
         self.lc_type = lc_type
         self.lamost_spec_file = lamost_spec_file
@@ -394,6 +397,7 @@ class ASASSNVarStarDataset(Dataset):
         self._remove_duplicates()
         self._filter_classes()
         self._merge_bands()
+        self._limit_samples()
         self._split()
 
         if prime:
@@ -794,6 +798,28 @@ class ASASSNVarStarDataset(Dataset):
         targets = targets[~pd.isnull(targets)]
 
         self.target_lookup = {i: x for i, x in enumerate(np.unique(targets))}
+
+    def _limit_samples(self):
+        """
+        Limit the amount of samples for each class to be no more than max_samples
+        """
+        if self.max_samples:
+            band = self.use_bands[0]
+
+            if self.verbose:
+                print(f'Limiting the amount of objects for each class to be no more than {self.max_samples} '
+                      f'based on {band} band classification...', flush=True, end=' ')
+
+            value_counts = self.df[target_cols[band][0]].value_counts()
+            classes_to_limit = value_counts[value_counts > self.max_samples].index
+
+            for class_type in classes_to_limit:
+                class_indices = self.df[self.df[target_cols[band][0]] == class_type].index
+                indices_to_keep = np.random.choice(class_indices, size=self.max_samples, replace=False)
+                self.df = self.df.drop(index=set(class_indices) - set(indices_to_keep))
+
+            if self.verbose:
+                print(f'Left with {len(self.df)}. done.', flush=True)
 
     def _split(self):
         total_size = len(self.df)
