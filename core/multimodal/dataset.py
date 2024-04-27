@@ -187,6 +187,11 @@ merge_key = {"g": "EDR3_source_id", "v": "edr3_source_id"}
 filtered_classes = ['CWA', 'CWB', 'DCEP', 'DCEPS', 'DSCT', 'EA', 'EB', 'EW',
                     'HADS', 'M', 'ROT', 'RRAB', 'RRC', 'RRD', 'RVA', 'SR']
 
+# Files specified in spec_df that don't actually exist
+remove_filenames = [1588,  1693,  1887,  3321,  3845,  4761,  5430,  8515,  9660, 11276,
+                    12231, 14104, 17493, 17716, 18451, 18900, 19074, 20292, 24786, 26316,
+                    26759, 30479, 30652, 30736, 31215, 33612, 39155, 40778, 41346]
+
 def collate_fn(
     batch, data_keys=["lcs", "metadata", "spectra", "classes"], fill_value=-9999
 ):
@@ -296,7 +301,7 @@ class ASASSNVarStarDataset(Dataset):
             use_errors=True,
             use_bands=["v", "g"],
             use_classes=filtered_classes,
-            max_samples=20000,
+            max_samples=None,
             merge_type="inner",
             lc_type="flux",
             rng=None,
@@ -946,6 +951,10 @@ class ASASSNVarStarDataset(Dataset):
             if self.verbose:
                 print("Opening spectra csv...", flush=True, end=" ")
             self.spec_df = pd.read_csv(self.data_root / self.lamost_spec_file)
+
+            # remove the files that do not actually exist from spec df
+            self.spec_df = self.spec_df[~self.spec_df.index.isin(remove_filenames)]
+
             if self.verbose:
                 print("done.", flush=True)
             if self.only_sources_with_spectra:
