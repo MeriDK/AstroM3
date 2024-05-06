@@ -177,18 +177,18 @@ torch.backends.cudnn.deterministic = True
 
 datapath = Path('data/asaasn')
 ds_train = ASASSNVarStarDataset(datapath, mode='train', verbose=True, only_periodic=True, recalc_period=False,
-                                prime=True, use_bands=['v'], only_sources_with_spectra=True, return_phased=True,
+                                prime=True, use_bands=['v'], only_sources_with_spectra=False, return_phased=True,
                                 fill_value=0)
 
 ds_val = ASASSNVarStarDataset(datapath, mode='val', verbose=True, only_periodic=True, recalc_period=False, prime=True,
-                              use_bands=['v'], only_sources_with_spectra=True, return_phased=True, fill_value=0)
+                              use_bands=['v'], only_sources_with_spectra=False, return_phased=True, fill_value=0)
 
 no_spectra_data_keys = ['lcs', 'classes']
 no_spectra_collate_fn = partial(collate_fn, data_keys=no_spectra_data_keys, fill_value=0)
 
-train_dataloader = DataLoader(ds_train, batch_size=512, shuffle=True, pin_memory=True, num_workers=8,
+train_dataloader = DataLoader(ds_train, batch_size=512, shuffle=True, num_workers=8,
                               collate_fn=no_spectra_collate_fn)
-val_dataloader = DataLoader(ds_val, batch_size=512, shuffle=False, pin_memory=True, collate_fn=no_spectra_collate_fn)
+val_dataloader = DataLoader(ds_val, batch_size=512, shuffle=False, collate_fn=no_spectra_collate_fn)
 
 context_length = 200
 
@@ -214,17 +214,14 @@ print('Using', device)
 encoder = TimeSeriesTransformerEncoder(config)
 model = CustomModel(encoder, num_classes=len(ds_train.target_lookup.keys()))
 model = model.to(device)
-# model.load_state_dict(torch.load('weights.pth'))
+model.load_state_dict(torch.load('weights/all-data-24-04/weights-9.pth'))
 
 optimizer = Adam(model.parameters(), lr=1e-3)
 criterion = nn.CrossEntropyLoss()
 
-for i in range(300):
+for i in range(10, 50):
     print(f'Epoch {i}', end=' ')
     train_epoch()
     val_epoch()
 
-    if i % 50 == 0:
-        torch.save(model.state_dict(), f'weights-{i}.pth')
-
-torch.save(model.state_dict(), 'weights.pth')
+    torch.save(model.state_dict(), f'weights/all-data-24-04/weights-{i}.pth')

@@ -6,15 +6,21 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import wandb
+import os
+import json
 
 
 class ClassificationTrainer:
-    def __init__(self, model, optimizer, scheduler, criterion, device, use_wandb=False):
+    def __init__(self, model, optimizer, scheduler, criterion, device, config, use_wandb=False):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.criterion = criterion
         self.device = device
+        self.context_length = config['context_length']
+        self.scales_path = os.path.join(config['datapath'], config['scales_file'])
+        self.save_weights = config['save_weights']
+        self.weights_path = config['weights_path']
         self.use_wandb = use_wandb
 
     def preprocess_batch(self, batch, masks):
@@ -31,14 +37,14 @@ class ClassificationTrainer:
         mask = lcs_mask[:, 0, 0, :]
 
         # context length 200, crop X and MASK if longer, pad if shorter
-        if X.shape[1] < self.config.context_length:
-            X_padding = (0, 0, 0, context_length - X.shape[1], 0, 0)
-            mask_padding = (0, context_length - X.shape[1])
+        if X.shape[1] < self.context_length:
+            X_padding = (0, 0, 0, self.context_length - X.shape[1], 0, 0)
+            mask_padding = (0, self.context_length - X.shape[1])
             X = F.pad(X, X_padding)
             mask = F.pad(mask, mask_padding, value=True)
         else:
-            X = X[:, :context_length, :]
-            mask = mask[:, :context_length]
+            X = X[:, :self.context_length, :]
+            mask = mask[:, :self.context_length]
 
         # the last dimention is (time, flux, flux_err), sort it based on time
         sort_indices = torch.argsort(X[:, :, 0], dim=1)
@@ -57,7 +63,7 @@ class ClassificationTrainer:
         sorted_mask = 1 - sorted_mask.int()
 
         # read scales
-        with open('scales.json', 'r') as f:
+        with open(self.scales_path, 'r') as f:
             scales = json.load(f)
             mean, std = scales['v']['mean'], scales['v']['std']
 
@@ -71,6 +77,9 @@ class ClassificationTrainer:
 
         return sorted_X, sorted_mask, classes
 
+    def store_weights(self, epoch):
+        torch.save(self.model.state_dict(), os.path.join(self.weights_path, f'weights-{epoch}.pth'))
+
     def train_epoch(self, train_dataloader):
         self.model.train()
         total_loss = []
@@ -78,14 +87,17 @@ class ClassificationTrainer:
         total_predictions = 0
 
         for batch, masks in tqdm(train_dataloader):
-            X, m, y = preprocess_batch(batch, masks)
-            X, m, y = X.to(device), m.to(device), y.to(device)
+            X, m, y = self.preprocess_batch(batch, masks)
+            X, m, y = X.to(self.device), m.to(self.device), y.to(self.device)
 
             self.optimizer.zero_grad()
 
             logits = self.model(X[:, :, 1:], m)
             loss = self.criterion(logits, y)
             total_loss.append(loss.item())
+
+            if self.use_wandb:
+                wandb.log({'step_loss': loss.item()})
 
             probabilities = torch.nn.functional.softmax(logits, dim=1)
             _, predicted_labels = torch.max(probabilities, dim=1)
@@ -106,9 +118,9 @@ class ClassificationTrainer:
         total_predictions = 0
 
         with torch.no_grad():
-            for batch, masks in tqdm(train_dataloader):
-                X, m, y = preprocess_batch(batch, masks)
-                X, m, y = X.to(device), m.to(device), y.to(device)
+            for batch, masks in tqdm(val_dataloader):
+                X, m, y = self.preprocess_batch(batch, masks)
+                X, m, y = X.to(self.device), m.to(self.device), y.to(self.device)
 
                 logits = self.model(X[:, :, 1:], m)
                 loss = self.criterion(logits, y)
@@ -136,6 +148,10 @@ class ClassificationTrainer:
             if self.use_wandb:
                 wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
                            'learning_rate': current_lr, 'epoch': epoch})
+
+            if self.save_weights:
+                self.store_weights(epoch)
+
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
 
@@ -147,8 +163,8 @@ class ClassificationTrainer:
 
         for batch, masks in tqdm(train_dataloader):
             with torch.no_grad():
-                X, m = preprocess_batch(batch, masks)
-                X, m = X.to(device), m.to(device)
+                X, m = self.preprocess_batch(batch, masks)
+                X, m = X.to(self.device), m.to(self.device)
 
                 logits = self.model(X[:, :, 1:], m)
                 probabilities = torch.nn.functional.softmax(logits, dim=1)
