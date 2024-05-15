@@ -16,6 +16,7 @@ from datetime import datetime
 from trainer import ClassificationTrainer
 from model import ClassificationModel
 from dataset import collate_fn, ASASSNVarStarDataset
+from models.Informer import Informer
 
 
 def classification(config):
@@ -38,16 +39,25 @@ def classification(config):
     no_spectra_collate_fn = partial(collate_fn, data_keys=no_spectra_data_keys, fill_value=0)
 
     train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=False,
-                                  num_workers=8, collate_fn=no_spectra_collate_fn)
+                                  num_workers=4, collate_fn=no_spectra_collate_fn)
     val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False, pin_memory=False,
-                                num_workers=8, collate_fn=no_spectra_collate_fn)
+                                num_workers=0, collate_fn=no_spectra_collate_fn)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', device)
 
-    encoder_config = get_encoder_config(config)
-    encoder = TimeSeriesTransformerEncoder(encoder_config)
-    model = ClassificationModel(encoder, num_classes=len(train_dataset.target_lookup.keys()))
+    if config['model'] == 'vanilla':
+        encoder_config = get_encoder_config(config)
+        encoder = TimeSeriesTransformerEncoder(encoder_config)
+        model = ClassificationModel(encoder, num_classes=len(train_dataset.target_lookup.keys()))
+    elif config['model'] == 'informer':
+        model = Informer(enc_in=2, d_model=config['d_model'], dropout=config['dropout'], factor=1,
+                         output_attention=False, n_heads=config['n_heads'], d_ff=config['d_ff'],
+                         activation='gelu', e_layers=config['encoder_layers'], seq_len=config['context_length'],
+                         num_class=len(train_dataset.target_lookup))
+    else:
+        raise ValueError(f'Model {config["model"]} not recognized')
+
     model = model.to(device)
 
     if config['use_pretrain']:
@@ -69,14 +79,15 @@ def classification(config):
 def get_config(random_seed):
 
     config = {
+        'project': 'vband-classification',
         'random_seed': random_seed,
         'use_wandb': True,
-        'save_weights': False,
-        'weights_path': f'/home/mrizhko/AML/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
+        'save_weights': True,
+        'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
         'use_pretrain': None,
         
         # Data
-        'datapath': '/home/mrizhko/AML/AstroML/data/asaasn',
+        'datapath': '/home/mariia/AstroML/data/asassn',
         'scales_file': 'scales.json',
         'only_periodic': True,
         'recalc_period': False,
@@ -89,11 +100,12 @@ def get_config(random_seed):
         'data_keys': ['lcs', 'classes'],
 
         # Time Series Transformer
-        'prediction_length': 20,    # doesn't matter for classification but it's required by hf
+        'model': 'informer',    # 'informer' or 'vanilla'
+        'prediction_length': 20,    # doesn't matter for classification, but it's required by hf
         'context_length': 200,
         'num_time_features': 1,
         'num_static_real_features': 0,  # if 0 we don't use real features
-        'encoder_layers': 3,
+        'encoder_layers': 2,
         'd_model': 128,
         'distribution_output': 'normal',
         'scaling': None,
@@ -102,6 +114,10 @@ def get_config(random_seed):
         'attention_dropout': 0,
         'activation_dropout': 0,
         'feature_size': 2,
+
+        # Informer
+        'n_heads': 4,
+        'd_ff': 512,
 
         # Training
         'batch_size': 512,
@@ -136,6 +152,7 @@ def get_encoder_config(config):
 
     return encoder_config
 
+
 def set_random_seeds(random_seed):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
@@ -149,7 +166,7 @@ def main():
     config = get_config(random_seed)
 
     if config['use_wandb']:
-        run = wandb.init(project='AstroML', config=config)
+        run = wandb.init(project=config['project'], config=config)
         config['run_id'] = run.id
         config['weights_path'] += f'-{run.id}'
         print(run.name, config)

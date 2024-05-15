@@ -1,13 +1,13 @@
 import torch
 import numpy as np
 from tqdm import tqdm
-from evaluate import load
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import wandb
 import os
 import json
+import torch.nn.functional as F
 
 
 class ClassificationTrainer:
@@ -46,7 +46,7 @@ class ClassificationTrainer:
             X = X[:, :self.context_length, :]
             mask = mask[:, :self.context_length]
 
-        # the last dimention is (time, flux, flux_err), sort it based on time
+        # the last dimension is (time, flux, flux_err), sort it based on time
         sort_indices = torch.argsort(X[:, :, 0], dim=1)
         sorted_X = torch.zeros_like(X)
 
@@ -161,10 +161,10 @@ class ClassificationTrainer:
         all_true_labels = []
         all_predicted_labels = []
 
-        for batch, masks in tqdm(train_dataloader):
+        for batch, masks in tqdm(val_dataloader):
             with torch.no_grad():
-                X, m = self.preprocess_batch(batch, masks)
-                X, m = X.to(self.device), m.to(self.device)
+                X, m, y = self.preprocess_batch(batch, masks)
+                X, m, y = X.to(self.device), m.to(self.device), y.to(self.device)
 
                 logits = self.model(X[:, :, 1:], m)
                 probabilities = torch.nn.functional.softmax(logits, dim=1)
