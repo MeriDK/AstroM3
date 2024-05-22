@@ -238,7 +238,6 @@ def normalize(data, use_error=False, measurements_in_flux_units=False):
     if use_error:
         standardized_data[:, :, 2] = ferr
 
-
     # Calculate median and scales (mad) for normalization
     med = np.nanmedian(standardized_data[:, :, 1], axis=1, keepdims=True)
     mad = np.expand_dims(stats.median_abs_deviation(standardized_data[:, :, 1], 

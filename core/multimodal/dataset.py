@@ -408,6 +408,8 @@ class ASASSNVarStarDataset(Dataset):
         if prime:
             self._prime()
 
+        self.num_classes = len(self.target_lookup)
+
     def __del__(self):
         """
         Before removing this instance, save the periods calculated during this time

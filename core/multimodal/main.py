@@ -9,134 +9,76 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import TimeSeriesTransformerConfig
 from transformers.models.time_series_transformer.modeling_time_series_transformer import TimeSeriesTransformerEncoder
+from datetime import datetime
 from pathlib import Path
 from functools import partial
-from datetime import datetime
 
 from trainer import ClassificationTrainer
 from model import ClassificationModel
-from dataset import collate_fn, ASASSNVarStarDataset
+from dataset import ASASSNVarStarDataset, collate_fn
+from dataset2 import VGDataset
 from models.Informer import Informer
 
 
-def classification(config):
+# Classes from ASAS-SN paper. Except for L, GCAS, YSO, GCAS: and VAR
+CLASSES = ['CWA', 'CWB', 'DCEP', 'DCEPS', 'DSCT', 'EA', 'EB', 'EW',
+           'HADS', 'M', 'ROT', 'RRAB', 'RRC', 'RRD', 'RVA', 'SR']
 
-    datapath = Path(config['datapath'])
-    train_dataset = ASASSNVarStarDataset(
-        datapath, mode='train', verbose=True, only_periodic=config['only_periodic'],
-        recalc_period=config['recalc_period'], prime=config['prime'], use_bands=config['use_bands'],
-        max_samples=config['max_samples'], only_sources_with_spectra=config['only_sources_with_spectra'],
-        return_phased=config['return_phased'], fill_value=config['fill_value']
-    )
-    val_dataset = ASASSNVarStarDataset(
-        datapath, mode='val', verbose=True, only_periodic=config['only_periodic'],
-        recalc_period=config['recalc_period'], prime=config['prime'], use_bands=config['use_bands'],
-        max_samples=config['max_samples'], only_sources_with_spectra=config['only_sources_with_spectra'],
-        return_phased=config['return_phased'], fill_value=config['fill_value']
-    )
 
-    no_spectra_data_keys = config['data_keys']
-    no_spectra_collate_fn = partial(collate_fn, data_keys=no_spectra_data_keys, fill_value=0)
+def get_datasets(config):
+    if config['dataset_class'] == 'VGDataset':
+        train_dataset = VGDataset(
+            config['data_root'], config['vg_file'], split='train', seq_len=config['seq_len'],
+            min_samples=config['min_samples'], max_samples=config['max_samples'], phased=config['phased'],
+            periodic=config['periodic'], classes=config['classes'], clip=config['clip_outliers'],
+            random_seed=config['random_seed'], scales=config['scales']
+        )
+        val_dataset = VGDataset(
+            config['data_root'], config['vg_file'], split='val', seq_len=config['seq_len'],
+            min_samples=config['min_samples'], max_samples=config['max_samples'], phased=config['phased'],
+            periodic=config['periodic'], classes=config['classes'], clip=config['clip_outliers'],
+            random_seed=config['random_seed'], scales=config['scales']
+        )
+    elif config['dataset_class'] == 'ASASSNVarStarDataset':
+        datapath = Path(config['data_root'])
+        rng = np.random.default_rng(config['random_seed'])
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=False,
-                                  num_workers=4, collate_fn=no_spectra_collate_fn)
-    val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False, pin_memory=False,
-                                num_workers=0, collate_fn=no_spectra_collate_fn)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Using', device)
-
-    if config['model'] == 'vanilla':
-        encoder_config = get_encoder_config(config)
-        encoder = TimeSeriesTransformerEncoder(encoder_config)
-        model = ClassificationModel(encoder, num_classes=len(train_dataset.target_lookup.keys()))
-    elif config['model'] == 'informer':
-        model = Informer(enc_in=2, d_model=config['d_model'], dropout=config['dropout'], factor=1,
-                         output_attention=False, n_heads=config['n_heads'], d_ff=config['d_ff'],
-                         activation='gelu', e_layers=config['encoder_layers'], seq_len=config['context_length'],
-                         num_class=len(train_dataset.target_lookup))
+        train_dataset = ASASSNVarStarDataset(
+            datapath, mode='train', verbose=True, only_periodic=config['periodic'], recalc_period=False, prime=True,
+            use_bands=['v'], max_samples=config['max_samples'], only_sources_with_spectra=False,
+            return_phased=config['phased'], fill_value=0, rng=rng
+        )
+        val_dataset = ASASSNVarStarDataset(
+            datapath, mode='val', verbose=True, only_periodic=config['periodic'], recalc_period=False, prime=True,
+            use_bands=['v'], max_samples=config['max_samples'], only_sources_with_spectra=False,
+            return_phased=config['phased'], fill_value=0, rng=rng
+        )
     else:
-        raise ValueError(f'Model {config["model"]} not recognized')
+        raise ValueError(f"Dataset class {config['dataset_class']} not supported")
 
-    model = model.to(device)
-
-    if config['use_pretrain']:
-        model.load_state_dict(torch.load(config['use_pretrain']))
-
-    optimizer = AdamW(model.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config['factor'],
-                                  patience=config['patience'], verbose=True)
-    criterion = nn.CrossEntropyLoss()
-
-    classification_trainer = ClassificationTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
-                                                   criterion=criterion, device=device, config=config,
-                                                   use_wandb=config['use_wandb'])
-
-    classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
-    classification_trainer.evaluate(val_dataloader)
+    return val_dataset, train_dataset
 
 
-def get_config(random_seed):
+def get_dataloaders(train_dataset, val_dataset, config):
+    if config['dataset_class'] == 'VGDataset':
+        train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=2)
+        val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
+    else:
+        no_spectra_data_keys = ['lcs', 'classes']
+        no_spectra_collate_fn = partial(collate_fn, data_keys=no_spectra_data_keys, fill_value=0)
 
-    config = {
-        'project': 'vband-classification',
-        'random_seed': random_seed,
-        'use_wandb': True,
-        'save_weights': True,
-        'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
-        'use_pretrain': None,
-        
-        # Data
-        'datapath': '/home/mariia/AstroML/data/asassn',
-        'scales_file': 'scales.json',
-        'only_periodic': True,
-        'recalc_period': False,
-        'prime': True,
-        'use_bands': ['v'],
-        'max_samples': 20000,
-        'only_sources_with_spectra': False,
-        'return_phased': True,
-        'fill_value': 0,
-        'data_keys': ['lcs', 'classes'],
+        train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=False,
+                                      num_workers=4, collate_fn=no_spectra_collate_fn)
+        val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False, pin_memory=False,
+                                    num_workers=0, collate_fn=no_spectra_collate_fn)
 
-        # Time Series Transformer
-        'model': 'informer',    # 'informer' or 'vanilla'
-        'prediction_length': 20,    # doesn't matter for classification, but it's required by hf
-        'context_length': 200,
-        'num_time_features': 1,
-        'num_static_real_features': 0,  # if 0 we don't use real features
-        'encoder_layers': 2,
-        'd_model': 128,
-        'distribution_output': 'normal',
-        'scaling': None,
-        'dropout': 0,
-        'encoder_layerdrop': 0,
-        'attention_dropout': 0,
-        'activation_dropout': 0,
-        'feature_size': 2,
-
-        # Informer
-        'n_heads': 4,
-        'd_ff': 512,
-
-        # Training
-        'batch_size': 512,
-        'lr': 1e-3,
-        'weight_decay': 0,
-        'epochs': 50,
-
-        # Learning Rate Scheduler
-        'factor': 0.3,
-        'patience': 3,
-    }
-
-    return config
+    return val_dataloader, train_dataloader
 
 
 def get_encoder_config(config):
     encoder_config = TimeSeriesTransformerConfig(
         prediction_length=config['prediction_length'],  # doesn't matter but it's required by hf
-        context_length=config['context_length'],
+        context_length=config['seq_len'],
         num_time_features=config['num_time_features'],
         num_static_real_features=config['num_static_real_features'],
         encoder_layers=config['encoder_layers'],
@@ -153,6 +95,47 @@ def get_encoder_config(config):
     return encoder_config
 
 
+def get_model(num_classes, config):
+    if config['model'] == 'vanilla':
+        encoder_config = get_encoder_config(config)
+        encoder = TimeSeriesTransformerEncoder(encoder_config)
+        model = ClassificationModel(encoder, num_classes=num_classes)
+    elif config['model'] == 'informer':
+        model = Informer(enc_in=config['feature_size'], d_model=config['d_model'], dropout=config['dropout'], factor=1,
+                         output_attention=False, n_heads=config['n_heads'], d_ff=config['d_ff'],
+                         activation='gelu', e_layers=config['encoder_layers'], seq_len=config['seq_len'],
+                         num_class=num_classes)
+    else:
+        raise ValueError(f'Model {config["model"]} not recognized')
+
+    if config['use_pretrain']:
+        model.load_state_dict(torch.load(config['use_pretrain']))
+
+    return model
+
+
+def classification(config):
+
+    val_dataset, train_dataset = get_datasets(config)
+    val_dataloader, train_dataloader = get_dataloaders(train_dataset, val_dataset, config)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using', device)
+
+    model = get_model(train_dataset.num_classes, config)
+    model = model.to(device)
+
+    optimizer = AdamW(model.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config['factor'], patience=config['patience'])
+    criterion = nn.CrossEntropyLoss()
+
+    classification_trainer = ClassificationTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
+                                                   criterion=criterion, device=device, config=config,
+                                                   use_wandb=config['use_wandb'])
+    classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
+    classification_trainer.evaluate(val_dataloader)
+
+
 def set_random_seeds(random_seed):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
@@ -160,8 +143,66 @@ def set_random_seeds(random_seed):
     torch.backends.cudnn.deterministic = True
 
 
+def get_config(random_seed):
+
+    config = {
+        'project': 'vband-classification',
+        'random_seed': random_seed,
+        'use_wandb': True,
+        'save_weights': True,
+        'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
+        'use_pretrain': None,
+        
+        # Data
+        'dataset_class': 'VGDataset',   # 'VGDataset' or 'ASASSNVarStarDataset'
+        'data_root': '/home/mariia/AstroML/data/asassn',
+        'vg_file': 'v.csv',     # 'vg_combined.csv', 'v.csv', 'g.csv'
+        'scales': 'mean-mad',    # 'scales.json', 'mean-std', 'mean-mad'
+        'seq_len': 200,
+        'min_samples': None,
+        'max_samples': 20000,
+        'classes': CLASSES,
+        'phased': False,
+        'periodic': True,
+        'clip_outliers': False,
+
+        # Model
+        'model': 'informer',  # 'informer' or 'vanilla'
+        'encoder_layers': 2,
+        'd_model': 128,
+        'dropout': 0,
+        'feature_size': 2,
+
+        # Informer
+        'n_heads': 4,
+        'd_ff': 512,
+
+        # Time Series Transformer
+        'prediction_length': 20,    # doesn't matter for classification, but it's required by hf
+        'num_time_features': 1,
+        'num_static_real_features': 0,  # if 0 we don't use real features
+        'distribution_output': 'normal',
+        'scaling': None,
+        'encoder_layerdrop': 0,
+        'attention_dropout': 0,
+        'activation_dropout': 0,
+
+        # Training
+        'batch_size': 512,
+        'lr': 1e-3,
+        'weight_decay': 0,
+        'epochs': 50,
+
+        # Learning Rate Scheduler
+        'factor': 0.3,
+        'patience': 10,
+    }
+
+    return config
+
+
 def main():
-    random_seed = 42
+    random_seed = 36
     set_random_seeds(random_seed)
     config = get_config(random_seed)
 

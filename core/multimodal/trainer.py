@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -7,7 +8,7 @@ from sklearn.metrics import confusion_matrix
 import wandb
 import os
 import json
-import torch.nn.functional as F
+from scipy import stats
 
 
 class ClassificationTrainer:
@@ -17,10 +18,12 @@ class ClassificationTrainer:
         self.scheduler = scheduler
         self.criterion = criterion
         self.device = device
-        self.context_length = config['context_length']
-        self.scales_path = os.path.join(config['datapath'], config['scales_file'])
         self.save_weights = config['save_weights']
         self.weights_path = config['weights_path']
+        self.context_length = config['seq_len']
+        self.data_root = config['data_root']
+        self.scales = config['scales']
+        self.dataset_class = config['dataset_class']
         self.use_wandb = use_wandb
 
     def preprocess_batch(self, batch, masks):
@@ -63,9 +66,18 @@ class ClassificationTrainer:
         sorted_mask = 1 - sorted_mask.int()
 
         # read scales
-        with open(self.scales_path, 'r') as f:
-            scales = json.load(f)
-            mean, std = scales['v']['mean'], scales['v']['std']
+        # TODO fix 'v' band to be dynamically set
+        if self.scales.endswith('.json'):
+            with open(os.path.join(self.data_root, self.scales)) as f:
+                s = json.load(f)
+                mean, std = s['v']['mean'], s['v']['std']
+        elif self.scales == 'mean-std':
+            mean, std = X[:, :, 1].mean(), X[:, :, 1].std()
+        elif self.scales == 'mean-mad':
+            mean = X[:, :, 1].mean()
+            std = stats.median_abs_deviation(X[:, :, 1])
+        else:
+            raise NotImplementedError(f'Unsupported scales {self.scales}')
 
         # scale X
         sorted_X[:, :, 1] = (sorted_X[:, :, 1] - mean) / std
@@ -86,13 +98,19 @@ class ClassificationTrainer:
         total_correct_predictions = 0
         total_predictions = 0
 
-        for batch, masks in tqdm(train_dataloader):
-            X, m, y = self.preprocess_batch(batch, masks)
-            X, m, y = X.to(self.device), m.to(self.device), y.to(self.device)
+        for el in tqdm(train_dataloader):
+            if self.dataset_class == 'VGDataset':
+                X, mask, y = el
+                X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+            else:
+                batch, masks = el
+                X, mask, y = self.preprocess_batch(batch, masks)
+                X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                X = X[:, :, 1:]
 
             self.optimizer.zero_grad()
 
-            logits = self.model(X[:, :, 1:], m)
+            logits = self.model(X, mask)
             loss = self.criterion(logits, y)
             total_loss.append(loss.item())
 
@@ -118,11 +136,17 @@ class ClassificationTrainer:
         total_predictions = 0
 
         with torch.no_grad():
-            for batch, masks in tqdm(val_dataloader):
-                X, m, y = self.preprocess_batch(batch, masks)
-                X, m, y = X.to(self.device), m.to(self.device), y.to(self.device)
+            for el in tqdm(val_dataloader):
+                if self.dataset_class == 'VGDataset':
+                    X, mask, y = el
+                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                else:
+                    batch, masks = el
+                    X, mask, y = self.preprocess_batch(batch, masks)
+                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                    X = X[:, :, 1:]
 
-                logits = self.model(X[:, :, 1:], m)
+                logits = self.model(X, mask)
                 loss = self.criterion(logits, y)
                 total_loss.append(loss.item())
 
@@ -143,7 +167,7 @@ class ClassificationTrainer:
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
             self.scheduler.step(val_loss)
-            current_lr = self.optimizer.param_groups[0]['lr']
+            current_lr = self.scheduler.get_last_lr()[0]
 
             if self.use_wandb:
                 wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
@@ -161,12 +185,18 @@ class ClassificationTrainer:
         all_true_labels = []
         all_predicted_labels = []
 
-        for batch, masks in tqdm(val_dataloader):
+        for el in tqdm(val_dataloader):
             with torch.no_grad():
-                X, m, y = self.preprocess_batch(batch, masks)
-                X, m, y = X.to(self.device), m.to(self.device), y.to(self.device)
+                if self.dataset_class == 'VGDataset':
+                    X, mask, y = el
+                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                else:
+                    batch, masks = el
+                    X, mask, y = self.preprocess_batch(batch, masks)
+                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                    X = X[:, :, 1:]
 
-                logits = self.model(X[:, :, 1:], m)
+                logits = self.model(X, mask)
                 probabilities = torch.nn.functional.softmax(logits, dim=1)
                 _, predicted_labels = torch.max(probabilities, dim=1)
 
