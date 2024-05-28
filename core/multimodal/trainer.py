@@ -101,12 +101,11 @@ class ClassificationTrainer:
         for el in tqdm(train_dataloader):
             if self.dataset_class == 'VGDataset':
                 X, mask, y = el
-                X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
             else:
                 batch, masks = el
                 X, mask, y = self.preprocess_batch(batch, masks)
-                X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
-                X = X[:, :, 1:]
+
+            X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
 
             self.optimizer.zero_grad()
 
@@ -162,8 +161,8 @@ class ClassificationTrainer:
     def train(self, train_dataloader, val_dataloader, epochs):
 
         for epoch in range(epochs):
-            self.train_epoch(train_dataloader)
-            train_loss, train_acc = self.val_epoch(train_dataloader)
+            train_loss, train_acc = self.train_epoch(train_dataloader)
+            # train_loss, train_acc = self.val_epoch(train_dataloader)
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
             self.scheduler.step(val_loss)
@@ -179,7 +178,7 @@ class ClassificationTrainer:
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
 
-    def evaluate(self, val_dataloader):
+    def evaluate(self, val_dataloader, id2target):
         self.model.eval()
 
         all_true_labels = []
@@ -189,11 +188,11 @@ class ClassificationTrainer:
             with torch.no_grad():
                 if self.dataset_class == 'VGDataset':
                     X, mask, y = el
-                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                    X, mask = X.to(self.device), mask.to(self.device)
                 else:
                     batch, masks = el
                     X, mask, y = self.preprocess_batch(batch, masks)
-                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
+                    X, mask = X.to(self.device), mask.to(self.device)
                     X = X[:, :, 1:]
 
                 logits = self.model(X, mask)
@@ -208,6 +207,9 @@ class ClassificationTrainer:
 
         # Calculate percentage values for confusion matrix
         conf_matrix_percent = 100 * conf_matrix / conf_matrix.sum(axis=1)[:, np.newaxis]
+
+        # Get the labels from the id2target mapping
+        labels = [id2target[i] for i in range(len(conf_matrix))]
 
         # Plot both confusion matrices side by side
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 7))

@@ -4,7 +4,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.optim import AdamW
+from torch.optim import AdamW, RAdam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import TimeSeriesTransformerConfig
@@ -61,7 +61,7 @@ def get_datasets(config):
 
 def get_dataloaders(train_dataset, val_dataset, config):
     if config['dataset_class'] == 'VGDataset':
-        train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=2)
+        train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
         val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
     else:
         no_spectra_data_keys = ['lcs', 'classes']
@@ -114,6 +114,17 @@ def get_model(num_classes, config):
     return model
 
 
+def get_optimizer(config, model):
+    if config['optimizer'] == 'AdamW':
+        optimizer = AdamW(model.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
+    elif config['optimizer'] == 'RAdam':
+        optimizer = RAdam(model.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
+    else:
+        raise NotImplementedError(f'Optimizer {config["optimizer"]} not implemented')
+
+    return optimizer
+
+
 def classification(config):
 
     val_dataset, train_dataset = get_datasets(config)
@@ -125,7 +136,7 @@ def classification(config):
     model = get_model(train_dataset.num_classes, config)
     model = model.to(device)
 
-    optimizer = AdamW(model.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
+    optimizer = get_optimizer(config, model)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config['factor'], patience=config['patience'])
     criterion = nn.CrossEntropyLoss()
 
@@ -133,7 +144,7 @@ def classification(config):
                                                    criterion=criterion, device=device, config=config,
                                                    use_wandb=config['use_wandb'])
     classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
-    classification_trainer.evaluate(val_dataloader)
+    classification_trainer.evaluate(val_dataloader, val_dataset.id2target)
 
 
 def set_random_seeds(random_seed):
@@ -158,11 +169,11 @@ def get_config(random_seed):
         'data_root': '/home/mariia/AstroML/data/asassn',
         'vg_file': 'v.csv',     # 'vg_combined.csv', 'v.csv', 'g.csv'
         'scales': 'mean-mad',    # 'scales.json', 'mean-std', 'mean-mad'
-        'seq_len': 200,
+        'seq_len': 1500,
         'min_samples': None,
         'max_samples': 20000,
         'classes': CLASSES,
-        'phased': False,
+        'phased': True,
         'periodic': True,
         'clip_outliers': False,
 
@@ -170,8 +181,8 @@ def get_config(random_seed):
         'model': 'informer',  # 'informer' or 'vanilla'
         'encoder_layers': 2,
         'd_model': 128,
-        'dropout': 0,
-        'feature_size': 2,
+        'dropout': 0.2,
+        'feature_size': 3,
 
         # Informer
         'n_heads': 4,
@@ -188,10 +199,11 @@ def get_config(random_seed):
         'activation_dropout': 0,
 
         # Training
-        'batch_size': 512,
+        'batch_size': 32,
         'lr': 1e-3,
-        'weight_decay': 0,
+        'weight_decay': 0.01,
         'epochs': 50,
+        'optimizer': 'AdamW',   # 'AdamW', 'RAdam'
 
         # Learning Rate Scheduler
         'factor': 0.3,
@@ -202,7 +214,7 @@ def get_config(random_seed):
 
 
 def main():
-    random_seed = 36
+    random_seed = 66
     set_random_seeds(random_seed)
     config = get_config(random_seed)
 

@@ -52,6 +52,7 @@ class DataEmbedding(nn.Module):
 
     def forward(self, x):
         x = self.value_embedding(x) + self.position_embedding(x)
+
         return self.dropout(x)
 
 
@@ -85,19 +86,15 @@ class ProbAttention(nn.Module):
         K_expand = K.unsqueeze(-3).expand(B, H, L_Q, L_K, E)
         # real U = U_part(factor*ln(L_k))*L_q
         index_sample = torch.randint(L_K, (L_Q, sample_k))
-        K_sample = K_expand[:, :, torch.arange(
-            L_Q).unsqueeze(1), index_sample, :]
-        Q_K_sample = torch.matmul(
-            Q.unsqueeze(-2), K_sample.transpose(-2, -1)).squeeze()
+        K_sample = K_expand[:, :, torch.arange(L_Q).unsqueeze(1), index_sample, :]
+        Q_K_sample = torch.matmul(Q.unsqueeze(-2), K_sample.transpose(-2, -1)).squeeze()
 
-        # find the Top_k query with sparisty measurement
+        # find the Top_k query with sparsity measurement
         M = Q_K_sample.max(-1)[0] - torch.div(Q_K_sample.sum(-1), L_K)
         M_top = M.topk(n_top, sorted=False)[1]
 
         # use the reduced Q to calculate Q_K
-        Q_reduce = Q[torch.arange(B)[:, None, None],
-                   torch.arange(H)[None, :, None],
-                   M_top, :]  # factor*ln(L_q)
+        Q_reduce = Q[torch.arange(B)[:, None, None], torch.arange(H)[None, :, None], M_top, :]  # factor*ln(L_q)
         Q_K = torch.matmul(Q_reduce, K.transpose(-2, -1))  # factor*ln(L_q)*L_k
 
         return Q_K, M_top
@@ -245,7 +242,8 @@ class Informer(nn.Module):
                  activation='gelu', e_layers=2, seq_len=200, num_class=2):
         super(Informer, self).__init__()
 
-        self.enc_embedding = DataEmbedding(enc_in, d_model, dropout)
+        # self.enc_embedding = DataEmbedding(enc_in, d_model, dropout)
+        self.enc_embedding = DataEmbedding(enc_in, d_model)
 
         attn_layers = [
             EncoderLayer(

@@ -10,7 +10,7 @@ class ClassificationModel(nn.Module):
         self.classifier = nn.Linear(self.encoder.config.d_model, num_classes)
 
     def forward(self, values, mask):
-        encoder_outputs = self.encoder(inputs_embeds=values, attention_mask=mask)
+        encoder_outputs = self.encoder(inputs_embeds=values[:, :, 1:], attention_mask=mask)
         emb = encoder_outputs.last_hidden_state[:, 0, :]  # we will use the 1 element only, analog to CLS?
         res = self.classifier(emb)
 
