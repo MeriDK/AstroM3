@@ -16,16 +16,18 @@ logging.captureWarnings(True)
 
 
 class VGDataset(Dataset):
-    def __init__(self, data_root, vg_file, v_zip='asassnvarlc_vband_complete.zip', g_tar='g_band_lcs-001.tar',
+    def __init__(self, data_root, vg_file, v_zip='asassnvarlc_vband_complete.zip', g_zip='g_band_lcs.zip',
                  v_prefix='vardb_files', g_prefix='g_band_lcs', scales='scales.json',
                  seq_len=200, split='train', min_samples=None, max_samples=None, classes=None, random_seed=42,
-                 phased=True, periodic=True, clip=True, verbose=True):
+                 phased=False, periodic=False, clip=False, verbose=True):
         self.data_root = data_root
         self.df = pd.read_csv(os.path.join(data_root, vg_file))
         self.reader_v = ZipFile(os.path.join(data_root, v_zip))
+        self.reader_g = ZipFile(os.path.join(data_root, g_zip))
         self.v_prefix = v_prefix
         self.g_prefix = g_prefix
         self.scales = scales
+
         self.seq_len = seq_len
         self.split = split
         self.min_samples = min_samples
@@ -125,7 +127,13 @@ class VGDataset(Dataset):
         return lc[['HJD', 'FLUX', 'FLUX_ERR']].values
 
     def get_glc(self, file_name):
-        lc = pd.read_csv(os.path.join(self.data_root, self.g_prefix, f'{file_name}.dat'), sep='\s+', skiprows=2,
+        csv = BytesIO()
+        data_path = f'{self.g_prefix}/{file_name}.dat'
+
+        csv.write(self.reader_g.read(data_path))
+        csv.seek(0)
+
+        lc = pd.read_csv(csv, sep='\s+', skiprows=2,
                          names=['HJD', 'camera', 'mag', 'mag_err', 'flux', 'flux_err', 'FWHM', 'IMAGE'],
                          dtype={'HJD': float, 'camera': 'object', 'mag': 'object', 'mag_err': 'object',
                                 'flux': float, 'flux_err': float, 'FWHM': 'object', 'IMAGE': 'object'})
@@ -133,15 +141,12 @@ class VGDataset(Dataset):
         return lc[['HJD', 'flux', 'flux_err']].values
 
     def preprocess(self, X, period, band):
-        # 1 phase
-        if self.phased:
-            X = np.vstack(((X[:, 0] % period) / period, X[:, 1], X[:, 2])).T
-
         # 2 sort based on HJD
         sorted_indices = np.argsort(X[:, 0])
         X = X[sorted_indices]
 
         # 3 clip outliers
+        # TODO double check clip outliers function
         if self.clip:
             t, y, y_err = X[:, 0], X[:, 1], X[:, 2]
             if len(t) > 20:
@@ -162,15 +167,25 @@ class VGDataset(Dataset):
         else:
             raise NotImplementedError(f'Unsupported scales {self.scales}')
 
+        X[:, 0] = (X[:, 0] - X[:, 0].min()) / (X[:, 0].max() - X[:, 0].min())
         X[:, 1] = (X[:, 1] - mean) / std
         X[:, 2] = X[:, 2] / std
 
-        # 5 trim/pad and create mask
-        mask = np.ones(self.seq_len)
-
+        # 5 trim if longer than seq_len
         if X.shape[0] > self.seq_len:
-            X = X[:self.seq_len, :]
-        else:
+            if self.split == 'train':
+                start = np.random.randint(0, len(X) - self.seq_len)
+                X = X[start:start + self.seq_len, :]
+            else:
+                X = X[:self.seq_len, :]
+
+        # 1 phase
+        if self.phased:
+            X = np.vstack(((X[:, 0] % period) / period, X[:, 1], X[:, 2])).T
+
+        # pad if needed and create mask
+        mask = np.ones(self.seq_len)
+        if X.shape[0] < self.seq_len:
             mask[X.shape[0]:] = 0
             X = np.pad(X, ((0, self.seq_len - X.shape[0]), (0, 0)), 'constant', constant_values=(0,))
 
@@ -178,7 +193,7 @@ class VGDataset(Dataset):
         X = X.astype(np.float32)
         mask = mask.astype(np.float32)
 
-        return X[:, 1:], mask
+        return X, mask
 
     def __len__(self):
         return len(self.df)
