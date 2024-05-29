@@ -9,6 +9,7 @@ import wandb
 import os
 import json
 from scipy import stats
+from util.early_stopping import EarlyStopping
 
 
 class ClassificationTrainer:
@@ -25,6 +26,7 @@ class ClassificationTrainer:
         self.scales = config['scales']
         self.dataset_class = config['dataset_class']
         self.use_wandb = use_wandb
+        self.early_stopping = EarlyStopping(patience=config['early_stopping_patience'])
 
     def preprocess_batch(self, batch, masks):
         lcs, classes = batch
@@ -178,6 +180,10 @@ class ClassificationTrainer:
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
 
+            if self.early_stopping.step(val_loss):
+                print(f'Early stopping at epoch {epoch}')
+                break
+
     def evaluate(self, val_dataloader, id2target):
         self.model.eval()
 
@@ -215,13 +221,14 @@ class ClassificationTrainer:
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 7))
 
         # Plot absolute values confusion matrix
-        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=axes[0])
+        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels, ax=axes[0])
         axes[0].set_xlabel('Predicted')
         axes[0].set_ylabel('True')
         axes[0].set_title('Confusion Matrix - Absolute Values')
 
         # Plot percentage values confusion matrix
-        sns.heatmap(conf_matrix_percent, annot=True, fmt='.0f', cmap='Blues', ax=axes[1])
+        sns.heatmap(conf_matrix_percent, annot=True, fmt='.0f', cmap='Blues', xticklabels=labels, yticklabels=labels,
+                    ax=axes[1])
         axes[1].set_xlabel('Predicted')
         axes[1].set_ylabel('True')
         axes[1].set_title('Confusion Matrix - Percentages')
