@@ -11,9 +11,9 @@ from datetime import datetime
 
 from dataset import SpectraVDataset
 from trainer import ClassificationTrainer
-from model import GalSpecNet, ResNet1
+from model import GalSpecNet, ResNet1, GalSpecNetV2, GalSpecNetV3, ResNetV2
 
-CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'L', 'EB', 'ROT']
+CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'L', 'EB', 'ROT', 'RRC', 'VAR', 'ROT:', 'M', 'HADS', 'DSCT']
 
 
 def get_datasets(config):
@@ -38,9 +38,15 @@ def get_dataloaders(train_dataset, val_dataset, config):
 
 def get_model(num_classes, config):
     if config['model'] == 'GalSpecNet':
-        model = GalSpecNet(num_classes=num_classes)
+        model = GalSpecNet(num_classes=num_classes, dropout=config['dropout'])
     elif config['model'] == 'ResNet1':
         model = ResNet1(num_classes=num_classes, dropout=config['dropout'])
+    elif config['model'] == 'GalSpecNetV2':
+        model = GalSpecNetV2(num_classes=num_classes, dropout=config['dropout'])
+    elif config['model'] == 'GalSpecNetV3':
+        model = GalSpecNetV3(num_classes=num_classes, dropout=config['dropout'])
+    elif config['model'] == 'ResNetV2':
+        model = ResNetV2(num_classes=num_classes, dropout=config['dropout'])
     else:
         raise ValueError(f'Model {config["model"]} not supported')
 
@@ -102,13 +108,14 @@ def get_config(random_seed):
         'z_corr': False,
 
         # Model
-        'model': 'GalSpecNet',
+        'model': 'GalSpecNetV2',    # 'GalSpecNet', 'GalSpecNetV2', 'GalSpecNetV3', 'ResNet1', 'ResNetV2
+        'dropout': 0.2,
 
         # Training
         'batch_size': 128,
         'lr': 1e-3,
         'weight_decay': 0.01,
-        'epochs': 10,
+        'epochs': 50,
         'optimizer': 'AdamW',
         'early_stopping_patience': 10,
 
