@@ -31,13 +31,13 @@ def get_datasets(config):
             config['data_root'], config['vg_file'], split='train', seq_len=config['seq_len'],
             min_samples=config['min_samples'], max_samples=config['max_samples'], phased=config['phased'],
             periodic=config['periodic'], classes=config['classes'], clip=config['clip_outliers'],
-            random_seed=config['random_seed'], scales=config['scales']
+            random_seed=config['random_seed'], scales=config['scales'], aux=config['aux']
         )
         val_dataset = VGDataset(
             config['data_root'], config['vg_file'], split='val', seq_len=config['seq_len'],
             min_samples=config['min_samples'], max_samples=config['max_samples'], phased=config['phased'],
             periodic=config['periodic'], classes=config['classes'], clip=config['clip_outliers'],
-            random_seed=config['random_seed'], scales=config['scales']
+            random_seed=config['random_seed'], scales=config['scales'], aux=config['aux']
         )
     elif config['dataset_class'] == 'ASASSNVarStarDataset':
         datapath = Path(config['data_root'])
@@ -169,19 +169,27 @@ def get_config(random_seed):
         'data_root': '/home/mariia/AstroML/data/asassn',
         'vg_file': 'v.csv',     # 'vg_combined.csv', 'v.csv', 'g.csv'
         'scales': 'mean-mad',    # 'scales.json', 'mean-std', 'mean-mad'
-        'seq_len': 1500,
-        'min_samples': None,
+        'seq_len': 200,
+
+        # 'min_samples': None,
+        # 'max_samples': 20000,
+        # 'classes': CLASSES,
+        # 'phased': True,
+        # 'periodic': True,
+        'min_samples': 5000,
         'max_samples': 20000,
-        'classes': CLASSES,
-        'phased': True,
-        'periodic': True,
+        'classes': None,
+        'phased': False,
+        'periodic': False,
+
         'clip_outliers': False,
+        'aux': True,
 
         # Model
         'model': 'informer',  # 'informer' or 'vanilla'
-        'encoder_layers': 2,
+        'encoder_layers': 8,
         'd_model': 128,
-        'dropout': 0.2,
+        'dropout': 0.1,
         'feature_size': 3,
 
         # Informer
@@ -200,15 +208,19 @@ def get_config(random_seed):
 
         # Training
         'batch_size': 32,
-        'lr': 1e-3,
+        'lr': 1e-4,
         'weight_decay': 0.01,
         'epochs': 50,
         'optimizer': 'AdamW',   # 'AdamW', 'RAdam'
+        'early_stopping_patience': 10,
 
         # Learning Rate Scheduler
         'factor': 0.3,
-        'patience': 10,
+        'patience': 5,
     }
+
+    if config['aux']:
+        config['feature_size'] += 5     # + (min, max, mean, std, period)
 
     return config
 

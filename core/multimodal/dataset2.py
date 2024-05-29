@@ -17,9 +17,9 @@ logging.captureWarnings(True)
 
 class VGDataset(Dataset):
     def __init__(self, data_root, vg_file, v_zip='asassnvarlc_vband_complete.zip', g_zip='g_band_lcs.zip',
-                 v_prefix='vardb_files', g_prefix='g_band_lcs', scales='scales.json',
+                 v_prefix='vardb_files', g_prefix='g_band_lcs', scales='mean-mad',
                  seq_len=200, split='train', min_samples=None, max_samples=None, classes=None, random_seed=42,
-                 phased=False, periodic=False, clip=False, verbose=True):
+                 phased=False, periodic=False, clip=False, verbose=True, aux=False):
         self.data_root = data_root
         self.df = pd.read_csv(os.path.join(data_root, vg_file))
         self.reader_v = ZipFile(os.path.join(data_root, v_zip))
@@ -36,6 +36,7 @@ class VGDataset(Dataset):
         self.phased = phased
         self.periodic = periodic
         self.clip = clip
+        self.aux = aux
         self.verbose = verbose
 
         self.random_seed = random_seed
@@ -154,6 +155,10 @@ class VGDataset(Dataset):
                                                            initial_clip=(20, 5), clean_only=True)
             X = np.vstack((t, y, y_err)).T
 
+        # Calculate min max before normalization
+        log_abs_min = 0 if min(X[:, 1]) == 0 else np.log(abs(min(X[:, 1])))
+        log_abs_max = np.log(abs(max(X[:, 1])))
+
         # 4 normalize
         if self.scales.endswith('.json'):
             with open(os.path.join(self.data_root, self.scales)) as f:
@@ -173,11 +178,14 @@ class VGDataset(Dataset):
 
         # 5 trim if longer than seq_len
         if X.shape[0] > self.seq_len:
-            if self.split == 'train':
-                start = np.random.randint(0, len(X) - self.seq_len)
-                X = X[start:start + self.seq_len, :]
-            else:
-                X = X[:self.seq_len, :]
+            start = np.random.randint(0, len(X) - self.seq_len)
+            X = X[start:start + self.seq_len, :]
+
+            # if self.split == 'train':
+            #     start = np.random.randint(0, len(X) - self.seq_len)
+            #     X = X[start:start + self.seq_len, :]
+            # else:
+            #     X = X[:self.seq_len, :]
 
         # 1 phase
         if self.phased:
@@ -188,6 +196,15 @@ class VGDataset(Dataset):
         if X.shape[0] < self.seq_len:
             mask[X.shape[0]:] = 0
             X = np.pad(X, ((0, self.seq_len - X.shape[0]), (0, 0)), 'constant', constant_values=(0,))
+
+        # add aux
+        if self.aux:
+            log_abs_mean = np.log(abs(mean))
+            log_std = np.log(std)
+            log_period = 0 if pd.isna(period) else np.log(period)
+
+            aux = np.tile([log_abs_min, log_abs_max, log_abs_mean, log_std, log_period], (self.seq_len, 1))
+            X = np.concatenate((X, aux), axis=-1)
 
         # 6 convert X and mask from float64 to float32
         X = X.astype(np.float32)
