@@ -11,7 +11,7 @@ from datetime import datetime
 
 from dataset import MetaVDataset
 from trainer import ClassificationTrainer
-from model import MetaClassifier
+from model import MetaClassifier, MetaClassifierV2
 
 CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'L', 'EB', 'ROT', 'RRC', 'VAR', 'ROT:', 'M', 'HADS', 'DSCT']
 
@@ -39,6 +39,9 @@ def get_dataloaders(train_dataset, val_dataset, config):
 def get_model(num_classes, config):
     if config['model'] == 'MetaClassifier':
         model = MetaClassifier(hidden_dim=config['hidden_dim'], num_classes=num_classes, dropout=config['dropout'])
+    elif config['model'] == 'MetaClassifierV2':
+        model = MetaClassifierV2(hidden_dim=config['hidden_dim'], num_classes=num_classes, dropout=config['dropout'],
+                                 n_layers=config['n_layers'])
     else:
         raise ValueError(f'Model {config["model"]} not supported')
 
@@ -94,12 +97,13 @@ def get_config(random_seed):
 
         # Data
         'file': '/home/mariia/AstroML/data/asassn/asassn_catalog_full.csv',
-        'classes': CLASSES,
-        'min_samples': None,
+        'classes': None,
+        'min_samples': 5000,
         'max_samples': 20000,
 
         # Model
-        'model': 'MetaClassifier',
+        'model': 'MetaClassifierV2',  # 'MetaClassifier', 'MetaClassifierV2'
+        'n_layers': 5,
         'hidden_dim': 512,
         'dropout': 0.5,
 
