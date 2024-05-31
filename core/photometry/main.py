@@ -220,7 +220,8 @@ def get_config(random_seed):
     }
 
     if config['aux']:
-        config['feature_size'] += 5     # + (min, max, mean, std, period)
+        # config['feature_size'] += 5     # + (min, max, mean, std, period)
+        config['feature_size'] += 4
 
     return config
 

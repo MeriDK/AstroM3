@@ -203,7 +203,8 @@ class VGDataset(Dataset):
             log_std = np.log(std)
             log_period = 0 if pd.isna(period) else np.log(period)
 
-            aux = np.tile([log_abs_min, log_abs_max, log_abs_mean, log_std, log_period], (self.seq_len, 1))
+            # aux = np.tile([log_abs_min, log_abs_max, log_abs_mean, log_std, log_period], (self.seq_len, 1))
+            aux = np.tile([log_abs_min, log_abs_max, log_abs_mean, log_std], (self.seq_len, 1))
             X = np.concatenate((X, aux), axis=-1)
 
         # 6 convert X and mask from float64 to float32
