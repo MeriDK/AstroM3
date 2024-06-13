@@ -125,7 +125,6 @@ class ClassificationTrainer:
 
         for el1, el2, y in tqdm(val_dataloader):
             with torch.no_grad():
-                y = y.to(self.device, dtype=torch.float32)
                 ps_sim, mp_sim, sm_sim = self.step(el1, el2)
 
                 probabilities = (sigmoid(ps_sim) + sigmoid(mp_sim) + sigmoid(sm_sim)) / 3

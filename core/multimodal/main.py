@@ -142,11 +142,11 @@ def get_config(random_seed):
         'weight_decay': 0,
         'epochs': 50,
         'optimizer': 'AdamW',
-        'early_stopping_patience': 10,
+        'early_stopping_patience': 100,
 
         # Learning Rate Scheduler
         'factor': 0.3,
-        'patience': 5,
+        'patience': 50,
     }
 
     config['p_feature_size'] += 4

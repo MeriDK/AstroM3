@@ -112,16 +112,19 @@ class ModelV0(nn.Module):
 
         self.cos = nn.CosineSimilarity(dim=1)
 
+    def get_embeddings(self, photometry, photometry_mask, spectra, metadata):
+        p_emb = self.photometry_proj(self.photometry_encoder(photometry, photometry_mask))
+        s_emb = self.spectra_proj(self.spectra_encoder(spectra))
+        m_emb = self.metadata_proj(self.metadata_encoder(metadata))
+
+        return p_emb, s_emb, m_emb
+
     def forward(self, el1, el2):
         photometry1, photometry_mask1, spectra1, metadata1 = el1
         photometry2, photometry_mask2, spectra2, metadata2 = el2
 
-        p_emb1 = self.photometry_proj(self.photometry_encoder(photometry1, photometry_mask1))
-        p_emb2 = self.photometry_proj(self.photometry_encoder(photometry2, photometry_mask2))
-        s_emb1 = self.spectra_proj(self.spectra_encoder(spectra1))
-        s_emb2 = self.spectra_proj(self.spectra_encoder(spectra2))
-        m_emb1 = self.metadata_proj(self.metadata_encoder(metadata1))
-        m_emb2 = self.metadata_proj(self.metadata_encoder(metadata2))
+        p_emb1, s_emb1, m_emb1 = self.get_embeddings(photometry1, photometry_mask1, spectra1, metadata1)
+        p_emb2, s_emb2, m_emb2 = self.get_embeddings(photometry2, photometry_mask2, spectra2, metadata2)
 
         ps_sim = self.cos(p_emb1, s_emb2)
         mp_sim = self.cos(m_emb1, p_emb2)
