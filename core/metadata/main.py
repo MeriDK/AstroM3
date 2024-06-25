@@ -9,22 +9,35 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from datetime import datetime
 
-from dataset import MetaVDataset
+from dataset import MetaVDataset, VPSMDatasetV2Meta
 from trainer import ClassificationTrainer
 from model import MetaClassifier, MetaClassifierV2
 
-CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'L', 'EB', 'ROT', 'RRC', 'VAR', 'ROT:', 'M', 'HADS', 'DSCT']
+# CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'L', 'EB', 'ROT', 'RRC', 'VAR', 'ROT:', 'M', 'HADS', 'DSCT']
+CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 
 
 def get_datasets(config):
-    train_dataset = MetaVDataset(
-        config['file'], split='train', classes=config['classes'], min_samples=config['min_samples'],
-        max_samples=config['max_samples'], random_seed=config['random_seed'], verbose=True
-    )
-    val_dataset = MetaVDataset(
-        config['file'], split='val', classes=config['classes'], min_samples=config['min_samples'],
-        max_samples=config['max_samples'], random_seed=config['random_seed'], verbose=True
-    )
+    if config['dataset'] == 'MetaVDataset':
+        train_dataset = MetaVDataset(
+            config['file'], split='train', classes=config['classes'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], random_seed=config['random_seed'], verbose=True
+        )
+        val_dataset = MetaVDataset(
+            config['file'], split='val', classes=config['classes'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], random_seed=config['random_seed'], verbose=True
+        )
+    elif config['dataset'] == 'VPSMDatasetV2Meta':
+        train_dataset = VPSMDatasetV2Meta(
+            split='train', data_root=config['data_root'], file=config['file'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], random_seed=config['random_seed']
+        )
+        val_dataset = VPSMDatasetV2Meta(
+            split='val', data_root=config['data_root'], file=config['file'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], random_seed=config['random_seed']
+        )
+    else:
+        raise ValueError(f'Dataset {config["dataset"]} not recognized')
 
     return val_dataset, train_dataset
 
@@ -96,21 +109,24 @@ def get_config(random_seed):
         'use_pretrain': None,
 
         # Data
-        'file': '/home/mariia/AstroML/data/asassn/asassn_catalog_full.csv',
-        'classes': None,
-        'min_samples': 5000,
-        'max_samples': 20000,
+        'dataset': 'VPSMDatasetV2Meta',     # 'VPSMDatasetV2Meta' or 'MetaVDataset'
+        'data_root': '/home/mariia/AstroML/data/asassn/',
+        'file': 'preprocessed_data/full/spectra_and_v',
+        # 'file': '/home/mariia/AstroML/data/asassn/asassn_catalog_full.csv',
+        'classes': CLASSES,
+        'min_samples': None,
+        'max_samples': None,
 
         # Model
-        'model': 'MetaClassifierV2',  # 'MetaClassifier', 'MetaClassifierV2'
+        'model': 'MetaClassifier',  # 'MetaClassifier', 'MetaClassifierV2'
         'n_layers': 5,
         'hidden_dim': 512,
-        'dropout': 0.5,
+        'dropout': 0,
 
         # Training
-        'batch_size': 128,
+        'batch_size': 32,
         'lr': 1e-3,
-        'weight_decay': 0.01,
+        'weight_decay': 0,
         'epochs': 50,
         'optimizer': 'AdamW',
         'early_stopping_patience': 10,
