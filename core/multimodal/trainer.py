@@ -1,4 +1,6 @@
 import torch
+from torch import nn
+import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -11,88 +13,98 @@ from torch.nn.functional import sigmoid
 
 
 class ClassificationTrainer:
-    def __init__(self, model, optimizer, scheduler, criterion, device, config, use_wandb=False):
+    def __init__(self, model, optimizer, scheduler, device, config, use_wandb=False):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.criterion = criterion
         self.device = device
         self.save_weights = config['save_weights']
         self.weights_path = config['weights_path']
         self.use_wandb = use_wandb
         self.early_stopping = EarlyStopping(patience=config['early_stopping_patience'])
 
+        self.total_loss = []
+        self.total_correct_predictions = 0
+        self.total_predictions = 0
+
     def store_weights(self, epoch):
         torch.save(self.model.state_dict(), os.path.join(self.weights_path, f'weights-{epoch}.pth'))
 
-    def step(self, el1, el2):
-        p, p_mask, s, m = el1
-        p2, p_mask2, s2, m2 = el2
+    def loss_fn(self, logits_ps, logits_sm, logits_mp):
+        labels = torch.arange(logits_ps.shape[0], dtype=torch.int64, device=logits_ps.device)
 
-        p, p_mask, s, m = p.to(self.device), p_mask.to(self.device), s.to(self.device), m.to(self.device)
-        p2, p_mask2, s2, m2 = p2.to(self.device), p_mask2.to(self.device), s2.to(self.device), m2.to(self.device)
+        loss_ps = F.cross_entropy(logits_ps, labels) + F.cross_entropy(logits_ps.transpose(-1, -2), labels)
+        loss_sm = F.cross_entropy(logits_sm, labels) + F.cross_entropy(logits_sm.transpose(-1, -2), labels)
+        loss_mp = F.cross_entropy(logits_mp, labels) + F.cross_entropy(logits_mp.transpose(-1, -2), labels)
 
-        ps_sim, mp_sim, sm_sim = self.model((p, p_mask, s, m), (p2, p_mask2, s2, m2))
+        return loss_ps, loss_sm, loss_mp
 
-        return ps_sim, mp_sim, sm_sim
+    def zero_stats(self):
+        self.total_loss = []
+        self.total_correct_predictions = 0
+        self.total_predictions = 0
 
-    def calculate_loss(self, ps_sim, mp_sim, sm_sim, y):
-        return self.criterion(ps_sim, y), self.criterion(mp_sim, y), self.criterion(sm_sim, y)
+    def update_stats(self, loss, logits_ps, logits_sm, logits_mp):
+        labels = torch.arange(logits_ps.shape[0], dtype=torch.int64, device=self.device)
+
+        prob_ps = (F.softmax(logits_ps, dim=1) + F.softmax(logits_ps.transpose(-1, -2), dim=1)) / 2
+        prob_sm = (F.softmax(logits_sm, dim=1) + F.softmax(logits_sm.transpose(-1, -2), dim=1)) / 2
+        prob_mp = (F.softmax(logits_mp, dim=1) + F.softmax(logits_mp.transpose(-1, -2), dim=1)) / 2
+        prob = (prob_ps + prob_sm + prob_mp) / 3
+
+        _, pred_labels = torch.max(prob, dim=1)
+        correct_predictions = (pred_labels == labels).sum().item()
+
+        self.total_correct_predictions += correct_predictions
+        self.total_predictions += labels.size(0)
+        self.total_loss.append(loss.item())
+
+    def calculate_stats(self):
+        return sum(self.total_loss) / len(self.total_loss), self.total_correct_predictions / self.total_predictions
 
     def train_epoch(self, train_dataloader):
         self.model.train()
-        total_loss = []
-        total_correct_predictions = 0
-        total_predictions = 0
+        self.zero_stats()
 
-        for el1, el2, y in tqdm(train_dataloader):
+        for photometry, photometry_mask, spectra, metadata, _ in tqdm(train_dataloader):
+            photometry, photometry_mask = photometry.to(self.device), photometry_mask.to(self.device)
+            spectra, metadata = spectra.to(self.device), metadata.to(self.device)
+
             self.optimizer.zero_grad()
+            logits_ps, logits_sm, logits_mp = self.model(photometry, photometry_mask, spectra, metadata)
+            loss_ps, loss_sm, loss_mp = self.loss_fn(logits_ps, logits_sm, logits_mp)
+            loss = loss_ps + loss_sm + loss_mp
 
-            y = y.to(self.device, dtype=torch.float32)
-            ps_sim, mp_sim, sm_sim = self.step(el1, el2)
-            ps_loss, mp_loss, sm_loss = self.calculate_loss(ps_sim, mp_sim, sm_sim, y)
-            loss = ps_loss + mp_loss + sm_loss
-
+            self.update_stats(loss, logits_ps, logits_sm, logits_mp)
             if self.use_wandb:
-                wandb.log({'step_loss': loss.item(), 'ps_loss': ps_loss.item(), 'mp_loss': mp_loss.item(),
-                           'sm_loss': sm_loss.item()})
-
-            total_loss.append(loss.item())
-
-            probabilities = (sigmoid(ps_sim) + sigmoid(mp_sim) + sigmoid(sm_sim)) / 3
-            predicted_labels = (probabilities >= 0.5).float()
-            correct_predictions = (predicted_labels == y).sum().item()
-
-            total_correct_predictions += correct_predictions
-            total_predictions += y.size(0)
+                wandb.log({'step_loss': loss.item(), 'loss_ps': loss_ps.item(), 'loss_sm': loss_sm.item(),
+                           'loss_mp': loss_mp.item()})
 
             loss.backward()
             self.optimizer.step()
 
-        return sum(total_loss) / len(total_loss), total_correct_predictions / total_predictions
+        loss, acc = self.calculate_stats()
+
+        return loss, acc
 
     def val_epoch(self, val_dataloader):
         self.model.eval()
-        total_loss = []
-        total_correct_predictions = 0
-        total_predictions = 0
+        self.zero_stats()
 
         with torch.no_grad():
-            for el1, el2, y in tqdm(val_dataloader):
-                y = y.to(self.device, dtype=torch.float32)
-                ps_sim, mp_sim, sm_sim = self.step(el1, el2)
-                ps_loss, mp_loss, sm_loss = self.calculate_loss(ps_sim, mp_sim, sm_sim, y)
-                loss = ps_loss + mp_loss + sm_loss
-                total_loss.append(loss.item())
+            for photometry, photometry_mask, spectra, metadata, _ in tqdm(val_dataloader):
+                photometry, photometry_mask = photometry.to(self.device), photometry_mask.to(self.device)
+                spectra, metadata = spectra.to(self.device), metadata.to(self.device)
 
-                probabilities = (sigmoid(ps_sim) + sigmoid(mp_sim) + sigmoid(sm_sim)) / 3
-                predicted_labels = (probabilities >= 0.5).float()
-                correct_predictions = (predicted_labels == y).sum().item()
+                logits_ps, logits_sm, logits_mp = self.model(photometry, photometry_mask, spectra, metadata)
+                loss_ps, loss_sm, loss_mp = self.loss_fn(logits_ps, logits_sm, logits_mp)
+                loss = loss_ps + loss_sm + loss_mp
 
-                total_correct_predictions += correct_predictions
-                total_predictions += y.size(0)
+                self.update_stats(loss, logits_ps, logits_sm, logits_mp)
 
-        return sum(total_loss) / len(total_loss), total_correct_predictions / total_predictions
+        loss, acc = self.calculate_stats()
+
+        return loss, acc
 
     def train(self, train_dataloader, val_dataloader, epochs):
         for epoch in range(epochs):
@@ -116,43 +128,3 @@ class ClassificationTrainer:
             if self.early_stopping.step(val_loss):
                 print(f'Early stopping at epoch {epoch}')
                 break
-
-    def evaluate(self, val_dataloader, id2target):
-        self.model.eval()
-
-        all_true_labels = []
-        all_predicted_labels = []
-
-        for el1, el2, y in tqdm(val_dataloader):
-            with torch.no_grad():
-                ps_sim, mp_sim, sm_sim = self.step(el1, el2)
-
-                probabilities = (sigmoid(ps_sim) + sigmoid(mp_sim) + sigmoid(sm_sim)) / 3
-                predicted_labels = (probabilities >= 0.5).float()
-
-                all_true_labels.extend(y.numpy())
-                all_predicted_labels.extend(predicted_labels.cpu().numpy())
-
-        # Calculate confusion matrix
-        conf_matrix = confusion_matrix(all_true_labels, all_predicted_labels)
-
-        # Calculate percentage values for confusion matrix
-        conf_matrix_percent = 100 * conf_matrix / conf_matrix.sum(axis=1)[:, np.newaxis]
-
-        # Plot both confusion matrices side by side
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 7))
-
-        # Plot absolute values confusion matrix
-        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=axes[0])
-        axes[0].set_xlabel('Predicted')
-        axes[0].set_ylabel('True')
-        axes[0].set_title('Confusion Matrix - Absolute Values')
-
-        # Plot percentage values confusion matrix
-        sns.heatmap(conf_matrix_percent, annot=True, fmt='.0f', cmap='Blues', ax=axes[1])
-        axes[1].set_xlabel('Predicted')
-        axes[1].set_ylabel('True')
-        axes[1].set_title('Confusion Matrix - Percentages')
-
-        if self.use_wandb:
-            wandb.log({'conf_matrix': wandb.Image(fig)})

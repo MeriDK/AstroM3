@@ -131,3 +131,49 @@ class ModelV0(nn.Module):
         sm_sim = self.cos(s_emb1, m_emb2)
 
         return ps_sim, mp_sim, sm_sim
+
+
+class ModelV1(nn.Module):
+    def __init__(self, config):
+        super(ModelV1, self).__init__()
+
+        self.photometry_encoder = Informer(
+            enc_in=config['p_feature_size'], d_model=config['p_d_model'], dropout=config['p_dropout'], factor=1,
+            output_attention=False, n_heads=config['p_n_heads'], d_ff=config['p_d_ff'],
+            activation='gelu', e_layers=config['p_encoder_layers']
+        )
+        self.spectra_encoder = GalSpecNet(dropout=config['s_dropout'])
+        self.metadata_encoder = MetaModel(hidden_dim=config['s_hidden_dim'], dropout=config['s_dropout'])
+
+        self.photometry_proj = nn.Linear(config['seq_len'] * config['p_d_model'], config['hidden_dim'])
+        self.spectra_proj = nn.Linear(1184, config['hidden_dim'])
+        self.metadata_proj = nn.Linear(config['m_hidden_dim'], config['hidden_dim'])
+
+        self.logit_scale_ps = nn.Parameter(torch.log(torch.ones([]) * 100))
+        self.logit_scale_sm = nn.Parameter(torch.log(torch.ones([]) * 100))
+        self.logit_scale_mp = nn.Parameter(torch.log(torch.ones([]) * 100))
+
+    def get_embeddings(self, photometry, photometry_mask, spectra, metadata):
+        p_emb = self.photometry_proj(self.photometry_encoder(photometry, photometry_mask))
+        s_emb = self.spectra_proj(self.spectra_encoder(spectra))
+        m_emb = self.metadata_proj(self.metadata_encoder(metadata))
+
+        # normalize feature
+        p_emb = p_emb / p_emb.norm(dim=-1, keepdim=True)
+        s_emb = s_emb / s_emb.norm(dim=-1, keepdim=True)
+        m_emb = m_emb / m_emb.norm(dim=-1, keepdim=True)
+
+        return p_emb, s_emb, m_emb
+
+    def forward(self, photometry, photometry_mask, spectra, metadata):
+        p_emb, s_emb, m_emb = self.get_embeddings(photometry, photometry_mask, spectra, metadata)
+
+        logit_scale_ps = torch.clamp(self.logit_scale_ps.exp(), min=1, max=100)
+        logit_scale_sm = torch.clamp(self.logit_scale_sm.exp(), min=1, max=100)
+        logit_scale_mp = torch.clamp(self.logit_scale_mp.exp(), min=1, max=100)
+
+        logits_ps = logit_scale_ps * p_emb @ s_emb.T
+        logits_sm = logit_scale_sm * s_emb @ m_emb.T
+        logits_mp = logit_scale_mp * m_emb @ p_emb.T
+
+        return logits_ps, logits_sm, logits_mp

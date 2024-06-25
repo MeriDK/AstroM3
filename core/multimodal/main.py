@@ -1,6 +1,3 @@
-from datetime import datetime
-
-
 import os
 import wandb
 import random
@@ -13,27 +10,46 @@ from torch.utils.data import DataLoader
 from datetime import datetime
 
 from dataset import VPSMDataset
+from dataset2 import VPSMDatasetV2
 from trainer import ClassificationTrainer
-from model import ModelV0
+from model import ModelV0, ModelV1
 
-CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'L', 'EB', 'ROT', 'RRC', 'VAR', 'ROT:', 'M', 'HADS', 'DSCT']
+CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 
 
 def get_datasets(config):
-    train_dataset = VPSMDataset(
-        data_root=config['data_root'], file=config['file'], split='train', min_samples=config['min_samples'],
-        max_samples=config['max_samples'], classes=config['classes'], random_seed=config['random_seed'], verbose=True,
-        v_zip=config['v_zip'], v_prefix=config['v_prefix'], seq_len=config['seq_len'], phased=config['phased'],
-        clip=config['clip'], aux=config['aux'], lamost_spec_dir=config['lamost_spec_dir'],
-        spectra_v_file=config['spectra_v_file'], z_corr=config['z_corr']
-    )
-    val_dataset = VPSMDataset(
-        data_root=config['data_root'], file=config['file'], split='val', min_samples=config['min_samples'],
-        max_samples=config['max_samples'], classes=config['classes'], random_seed=config['random_seed'], verbose=True,
-        v_zip=config['v_zip'], v_prefix=config['v_prefix'], seq_len=config['seq_len'], phased=config['phased'],
-        clip=config['clip'], aux=config['aux'], lamost_spec_dir=config['lamost_spec_dir'],
-        spectra_v_file=config['spectra_v_file'], z_corr=config['z_corr']
-    )
+    if config['dataset'] == 'VPSMDataset':
+        train_dataset = VPSMDataset(
+            data_root=config['data_root'], file=config['file'], split='train', min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], random_seed=config['random_seed'], verbose=True,
+            v_zip=config['v_zip'], v_prefix=config['v_prefix'], seq_len=config['seq_len'], phased=config['phased'],
+            clip=config['clip'], aux=config['aux'], lamost_spec_dir=config['lamost_spec_dir'],
+            spectra_v_file=config['spectra_v_file'], z_corr=config['z_corr']
+        )
+        val_dataset = VPSMDataset(
+            data_root=config['data_root'], file=config['file'], split='val', min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], random_seed=config['random_seed'], verbose=True,
+            v_zip=config['v_zip'], v_prefix=config['v_prefix'], seq_len=config['seq_len'], phased=config['phased'],
+            clip=config['clip'], aux=config['aux'], lamost_spec_dir=config['lamost_spec_dir'],
+            spectra_v_file=config['spectra_v_file'], z_corr=config['z_corr']
+        )
+    elif config['dataset'] == 'VPSMDatasetV2':
+        train_dataset = VPSMDatasetV2(
+            split='train', data_root=config['data_root'], file=config['file'], v_zip=config['v_zip'],
+            v_prefix=config['v_prefix'], lamost_spec_dir=config['lamost_spec_dir'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], seq_len=config['seq_len'],
+            phased=config['phased'], clip=config['clip'], aux=config['aux'], z_corr=config['z_corr'],
+            random_seed=config['random_seed']
+        )
+        val_dataset = VPSMDatasetV2(
+            split='val', data_root=config['data_root'], file=config['file'], v_zip=config['v_zip'],
+            v_prefix=config['v_prefix'], lamost_spec_dir=config['lamost_spec_dir'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], seq_len=config['seq_len'],
+            phased=config['phased'], clip=config['clip'], aux=config['aux'], z_corr=config['z_corr'],
+            random_seed=config['random_seed']
+        )
+    else:
+        raise ValueError(f'Invalid dataset: {config["dataset"]}')
 
     return val_dataset, train_dataset
 
@@ -46,7 +62,13 @@ def get_dataloaders(train_dataset, val_dataset, config):
 
 
 def get_model(config):
-    model = ModelV0(config)
+    if config['model'] == 'ModelV0':
+        model = ModelV0(config)
+    elif config['model'] == 'ModelV1':
+        model = ModelV1(config)
+    else:
+        raise ValueError(f'Invalid model: {config["model"]}')
+
     print(model)
 
     if config['use_pretrain']:
@@ -72,13 +94,10 @@ def classification(config):
 
     optimizer = get_optimizer(config, model)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config['factor'], patience=config['patience'])
-    criterion = nn.BCEWithLogitsLoss()
 
     classification_trainer = ClassificationTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
-                                                   criterion=criterion, device=device, config=config,
-                                                   use_wandb=config['use_wandb'])
+                                                   device=device, config=config, use_wandb=config['use_wandb'])
     classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
-    classification_trainer.evaluate(val_dataloader, val_dataset.id2target)
 
 
 def set_random_seeds(random_seed):
@@ -90,7 +109,7 @@ def set_random_seeds(random_seed):
 
 def get_config(random_seed):
     config = {
-        'project': 'multimodal-contrastive',
+        'project': 'AstroCLIP',
         'random_seed': random_seed,
         'use_wandb': True,
         'save_weights': True,
@@ -98,10 +117,11 @@ def get_config(random_seed):
         'use_pretrain': None,
 
         # Data General
+        'dataset': 'VPSMDatasetV2',     # 'VPSMDataset' or 'VPSMDatasetV2'
         'data_root': '/home/mariia/AstroML/data/asassn/',
-        'file': 'spectra_v_merged_fixed.csv',
-        'classes': None,
-        'min_samples': 200,
+        'file': 'preprocessed_data/full/spectra_and_v',
+        'classes': CLASSES,
+        'min_samples': None,
         'max_samples': None,
 
         # Photometry
@@ -134,6 +154,7 @@ def get_config(random_seed):
         'm_dropout': 0,
 
         # MultiModal Model
+        'model': 'ModelV1',     # 'ModelV0' or 'ModelV1'
         'hidden_dim': 256,
 
         # Training
