@@ -69,7 +69,7 @@ def readLRSFits(filename, z_corr=False):
     return np.vstack((wavelength, specflux, ivar)).T
 
 
-def preprocess_lc(X, period, clip, seq_len, phased, aux):
+def preprocess_lc(X, period, clip, seq_len, phased, aux, crop='random', add_noise=False):
     # 2 sort based on HJD
     sorted_indices = np.argsort(X[:, 0])
     X = X[sorted_indices]
@@ -96,14 +96,12 @@ def preprocess_lc(X, period, clip, seq_len, phased, aux):
 
     # 5 trim if longer than seq_len
     if X.shape[0] > seq_len:
-        start = np.random.randint(0, len(X) - seq_len)
-        X = X[start:start + seq_len, :]
+        if crop == 'random':
+            start = np.random.randint(0, len(X) - seq_len)
+        else:   # 'center'
+            start = (len(X) - seq_len) // 2
 
-        # if self.split == 'train':
-        #     start = np.random.randint(0, len(X) - self.seq_len)
-        #     X = X[start:start + self.seq_len, :]
-        # else:
-        #     X = X[:self.seq_len, :]
+        X = X[start:start + seq_len, :]
 
     # 1 phase
     if phased:
@@ -144,3 +142,27 @@ def get_vlc(file_name, v_prefix, reader_v):
 
     return lc[['HJD', 'FLUX', 'FLUX_ERR']].values
 
+
+def add_noise(X, noise_coef=1):
+    time, flux, flux_err = X[:, 0], X[:, 1], X[:, 2]
+
+    # Sample noise from a normal distribution using flux_err
+    noise = np.random.normal(0, flux_err)
+
+    # Add the noise to the flux
+    flux_noisy = flux + noise * noise_coef
+
+    # Combine time, noisy flux, and flux_err back into the original shape
+    X_noisy = np.column_stack((time, flux_noisy, flux_err))
+
+    return X_noisy
+
+
+def aug_metadata(metadata, noise_coef=1, noise_level=0.01):
+    # Generate Gaussian noise
+    noise = np.random.normal(0, noise_level, metadata.shape).astype(np.float32)
+
+    # Add noise to metadata
+    augmented_metadata = metadata + noise * noise_coef
+
+    return augmented_metadata
