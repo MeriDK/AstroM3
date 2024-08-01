@@ -16,13 +16,14 @@ from functools import partial
 from trainer import ClassificationTrainer
 from model import ClassificationModel
 from dataset import ASASSNVarStarDataset, collate_fn
-from dataset2 import VGDataset
+from dataset2 import VGDataset, VPSMDatasetV2Photo
 from models.Informer import Informer
 
 
 # Classes from ASAS-SN paper. Except for L, GCAS, YSO, GCAS: and VAR
-CLASSES = ['CWA', 'CWB', 'DCEP', 'DCEPS', 'DSCT', 'EA', 'EB', 'EW',
-           'HADS', 'M', 'ROT', 'RRAB', 'RRC', 'RRD', 'RVA', 'SR']
+# CLASSES = ['CWA', 'CWB', 'DCEP', 'DCEPS', 'DSCT', 'EA', 'EB', 'EW',
+#            'HADS', 'M', 'ROT', 'RRAB', 'RRC', 'RRD', 'RVA', 'SR']
+CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 
 
 def get_datasets(config):
@@ -53,6 +54,19 @@ def get_datasets(config):
             use_bands=['v'], max_samples=config['max_samples'], only_sources_with_spectra=False,
             return_phased=config['phased'], fill_value=0, rng=rng
         )
+    elif config['dataset_class'] == 'VPSMDatasetV2Photo':
+        train_dataset = VPSMDatasetV2Photo(
+            split='train', data_root=config['data_root'], file=config['file'], v_zip=config['v_zip'],
+            v_prefix=config['v_prefix'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], seq_len=config['seq_len'],
+            phased=config['phased'], clip=config['clip'], aux=config['aux'], random_seed=config['random_seed']
+        )
+        val_dataset = VPSMDatasetV2Photo(
+            split='val', data_root=config['data_root'], file=config['file'], v_zip=config['v_zip'],
+            v_prefix=config['v_prefix'], min_samples=config['min_samples'],
+            max_samples=config['max_samples'], classes=config['classes'], seq_len=config['seq_len'],
+            phased=config['phased'], clip=config['clip'], aux=config['aux'], random_seed=config['random_seed']
+        )
     else:
         raise ValueError(f"Dataset class {config['dataset_class']} not supported")
 
@@ -60,10 +74,7 @@ def get_datasets(config):
 
 
 def get_dataloaders(train_dataset, val_dataset, config):
-    if config['dataset_class'] == 'VGDataset':
-        train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
-        val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
-    else:
+    if config['dataset_class'] == 'ASASSNVarStarDataset':
         no_spectra_data_keys = ['lcs', 'classes']
         no_spectra_collate_fn = partial(collate_fn, data_keys=no_spectra_data_keys, fill_value=0)
 
@@ -71,6 +82,9 @@ def get_dataloaders(train_dataset, val_dataset, config):
                                       num_workers=4, collate_fn=no_spectra_collate_fn)
         val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False, pin_memory=False,
                                     num_workers=0, collate_fn=no_spectra_collate_fn)
+    else:
+        train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
+        val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
 
     return val_dataloader, train_dataloader
 
@@ -165,31 +179,35 @@ def get_config(random_seed):
         'use_pretrain': None,
         
         # Data
-        'dataset_class': 'VGDataset',   # 'VGDataset' or 'ASASSNVarStarDataset'
-        'data_root': '/home/mariia/AstroML/data/asassn',
-        'vg_file': 'v.csv',     # 'vg_combined.csv', 'v.csv', 'g.csv'
+        'dataset_class': 'VPSMDatasetV2Photo',   # 'VGDataset' or 'ASASSNVarStarDataset' 'VPSMDatasetV2Photo'
+        # 'vg_file': 'v.csv',     # 'vg_combined.csv', 'v.csv', 'g.csv'
         'scales': 'mean-mad',    # 'scales.json', 'mean-std', 'mean-mad'
-        'seq_len': 200,
 
-        # 'min_samples': None,
-        # 'max_samples': 20000,
-        # 'classes': CLASSES,
-        # 'phased': True,
-        # 'periodic': True,
-        'min_samples': 5000,
-        'max_samples': 20000,
-        'classes': None,
-        'phased': False,
         'periodic': False,
-
         'clip_outliers': False,
+
+        'dataset': 'VPSMDatasetV2Photo',  # 'VPSMDataset' or 'VPSMDatasetV2'
+        'data_root': '/home/mariia/AstroML/data/asassn/',
+        'file': 'preprocessed_data/full/spectra_and_v',
+        'classes': CLASSES,
+        'min_samples': None,
+        'max_samples': None,
+        'noise': False,  # for train data only
+        'noise_coef': 2,
+
+        # Photometry
+        'v_zip': 'asassnvarlc_vband_complete.zip',
+        'v_prefix': 'vardb_files',
+        'seq_len': 200,
+        'phased': True,
+        'clip': False,
         'aux': True,
 
         # Model
         'model': 'informer',  # 'informer' or 'vanilla'
         'encoder_layers': 8,
         'd_model': 128,
-        'dropout': 0.1,
+        'dropout': 0,
         'feature_size': 3,
 
         # Informer
@@ -207,11 +225,11 @@ def get_config(random_seed):
         'activation_dropout': 0,
 
         # Training
-        'batch_size': 32,
-        'lr': 1e-4,
-        'weight_decay': 0.01,
-        'epochs': 50,
-        'optimizer': 'AdamW',   # 'AdamW', 'RAdam'
+        'batch_size': 64,
+        'lr': 1e-3,
+        'weight_decay': 1e-3,
+        'epochs': 100,
+        'optimizer': 'AdamW',
         'early_stopping_patience': 10,
 
         # Learning Rate Scheduler
