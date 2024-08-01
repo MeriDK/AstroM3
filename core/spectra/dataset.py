@@ -4,6 +4,7 @@ import pandas as pd
 from astropy.io import fits
 from scipy import stats
 from torch.utils.data import Dataset
+from core.data.utils import readLRSFits, preprocess_spectra
 
 
 class SpectraVDataset(Dataset):
@@ -118,3 +119,59 @@ class SpectraVDataset(Dataset):
             wavelength = wavelength - redshift * wavelength
 
         return np.vstack((wavelength, specflux, ivar)).T
+
+
+class VPSMDatasetV2Spectra(Dataset):
+    def __init__(self, split='train', data_root='/home/mariia/AstroML/data/asassn/', file='preprocessed_data/full/spectra_and_v',
+                 lamost_spec_dir='Spectra/v2', min_samples=None, max_samples=None, classes=None,
+                 z_corr=False, random_seed=42):
+
+        self.data_root = data_root
+        self.df = pd.read_csv(os.path.join(data_root, f'{file}_{split}_norm.csv'))
+        self.lamost_spec_dir = os.path.join(data_root, lamost_spec_dir)
+
+        self.min_samples = min_samples
+        self.max_samples = max_samples
+        self.classes = classes
+        self.z_corr = z_corr
+
+        self.random_seed = random_seed
+        np.random.seed(random_seed)
+
+        self._filter_classes()
+        self._limit_samples()
+
+        self.id2target = {i: x for i, x in enumerate(sorted(self.df['target'].unique()))}
+        self.target2id = {v: k for k, v in self.id2target.items()}
+        self.num_classes = len(self.id2target)
+
+    def _filter_classes(self):
+        if self.classes:
+            self.df = self.df[self.df['target'].isin(self.classes)]
+
+    def _limit_samples(self):
+        if self.min_samples:
+            value_counts = self.df['target'].value_counts()
+            classes_to_remove = value_counts[value_counts < self.min_samples].index
+            self.df = self.df[~self.df['target'].isin(classes_to_remove)]
+
+        if self.max_samples:
+            value_counts = self.df['target'].value_counts()
+            classes_to_limit = value_counts[value_counts > self.max_samples].index
+
+            for class_type in classes_to_limit:
+                class_indices = self.df[self.df['target'] == class_type].index
+                indices_to_keep = np.random.choice(class_indices, size=self.max_samples, replace=False)
+                self.df = self.df.drop(index=set(class_indices) - set(indices_to_keep))
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        el = self.df.iloc[idx]
+        label = self.target2id[el['target']]
+
+        spectra = readLRSFits(os.path.join(self.lamost_spec_dir, el['spec_filename']), self.z_corr)
+        spectra = preprocess_spectra(spectra)
+
+        return spectra, label
