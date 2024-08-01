@@ -4,7 +4,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 
 from util.parallelzipfile import ParallelZipFile as ZipFile
-from core.data.utils import preprocess_spectra, readLRSFits, preprocess_lc, get_vlc
+from core.data.utils import preprocess_spectra, readLRSFits, preprocess_lc, get_vlc, add_noise, aug_metadata
 
 
 METADATA_COLS = [
@@ -23,8 +23,9 @@ class VPSMDatasetV2(Dataset):
     def __init__(self, split='train', data_root='/home/mariia/AstroML/data/asassn/', file='preprocessed_data/full/spectra_and_v',
                  v_zip='asassnvarlc_vband_complete.zip', v_prefix='vardb_files', lamost_spec_dir='Spectra/v2',
                  min_samples=None, max_samples=None, classes=None, seq_len=200, phased=False, clip=False, aux=False,
-                 z_corr=False, random_seed=42):
+                 z_corr=False, noise=False, noise_coef=1, random_seed=42):
 
+        self.split = split
         self.data_root = data_root
         self.df = pd.read_csv(os.path.join(data_root, f'{file}_{split}_norm.csv'))
         self.reader_v = ZipFile(os.path.join(data_root, v_zip))
@@ -40,6 +41,8 @@ class VPSMDatasetV2(Dataset):
         self.clip = clip
         self.aux = aux
         self.z_corr = z_corr
+        self.noise = noise
+        self.noise_coef = noise_coef
 
         self.random_seed = random_seed
         np.random.seed(random_seed)
@@ -78,12 +81,17 @@ class VPSMDatasetV2(Dataset):
         label = self.target2id[el['target']]
 
         photometry = get_vlc(el['name'], self.v_prefix, self.reader_v)
-        photometry, photometry_mask = preprocess_lc(photometry, el['period'], self.clip, self.seq_len, self.phased,
-                                                    self.aux)
-
         spectra = readLRSFits(os.path.join(self.lamost_spec_dir, el['spec_filename']), self.z_corr)
-        spectra = preprocess_spectra(spectra)
-
         metadata = el[self.metadata_cols].values.astype(np.float32)
+
+        if self.noise:
+            photometry = add_noise(photometry, noise_coef=self.noise_coef)
+            spectra = add_noise(spectra, noise_coef=self.noise_coef)
+            metadata = aug_metadata(metadata, noise_coef=self.noise_coef)
+
+        crop = 'random' if self.split == 'train' else 'center'
+        photometry, photometry_mask = preprocess_lc(photometry, el['period'], self.clip, self.seq_len, self.phased,
+                                                    self.aux, crop=crop)
+        spectra = preprocess_spectra(spectra)
 
         return photometry, photometry_mask, spectra, metadata, label
