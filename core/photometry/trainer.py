@@ -101,11 +101,11 @@ class ClassificationTrainer:
         total_predictions = 0
 
         for el in tqdm(train_dataloader):
-            if self.dataset_class == 'VGDataset':
-                X, mask, y = el
-            else:
+            if self.dataset_class == 'ASASSNVarStarDataset':
                 batch, masks = el
                 X, mask, y = self.preprocess_batch(batch, masks)
+            else:
+                X, mask, y = el
 
             X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
 
@@ -138,14 +138,14 @@ class ClassificationTrainer:
 
         with torch.no_grad():
             for el in tqdm(val_dataloader):
-                if self.dataset_class == 'VGDataset':
-                    X, mask, y = el
-                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
-                else:
+                if self.dataset_class == 'ASASSNVarStarDataset':
                     batch, masks = el
                     X, mask, y = self.preprocess_batch(batch, masks)
                     X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
                     X = X[:, :, 1:]
+                else:
+                    X, mask, y = el
+                    X, mask, y = X.to(self.device), mask.to(self.device), y.to(self.device)
 
                 logits = self.model(X, mask)
                 loss = self.criterion(logits, y)
@@ -192,14 +192,14 @@ class ClassificationTrainer:
 
         for el in tqdm(val_dataloader):
             with torch.no_grad():
-                if self.dataset_class == 'VGDataset':
-                    X, mask, y = el
-                    X, mask = X.to(self.device), mask.to(self.device)
-                else:
+                if self.dataset_class == 'ASASSNVarStarDataset':
                     batch, masks = el
                     X, mask, y = self.preprocess_batch(batch, masks)
                     X, mask = X.to(self.device), mask.to(self.device)
                     X = X[:, :, 1:]
+                else:
+                    X, mask, y = el
+                    X, mask = X.to(self.device), mask.to(self.device)
 
                 logits = self.model(X, mask)
                 probabilities = torch.nn.functional.softmax(logits, dim=1)
