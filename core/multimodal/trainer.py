@@ -1,18 +1,12 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
-import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import confusion_matrix
 import wandb
 import os
 from util.early_stopping import EarlyStopping
-from torch.nn.functional import sigmoid
 
 
-class ClassificationTrainer:
+class CLIPTrainer:
     def __init__(self, model, optimizer, scheduler, device, config, use_wandb=False):
         self.model = model
         self.optimizer = optimizer
@@ -22,6 +16,10 @@ class ClassificationTrainer:
         self.weights_path = config['weights_path']
         self.use_wandb = use_wandb
         self.early_stopping = EarlyStopping(patience=config['early_stopping_patience'])
+
+        self.ps_coef = config['ps_coef']
+        self.mp_coef = config['mp_coef']
+        self.sm_coef = config['sm_coef']
 
         self.total_loss = []
         self.total_correct_predictions = 0
@@ -73,7 +71,7 @@ class ClassificationTrainer:
             self.optimizer.zero_grad()
             logits_ps, logits_sm, logits_mp = self.model(photometry, photometry_mask, spectra, metadata)
             loss_ps, loss_sm, loss_mp = self.loss_fn(logits_ps, logits_sm, logits_mp)
-            loss = loss_ps + loss_sm + loss_mp
+            loss = self.ps_coef * loss_ps + self.sm_coef * loss_sm + self.mp_coef * loss_mp
 
             self.update_stats(loss, logits_ps, logits_sm, logits_mp)
             if self.use_wandb:
@@ -98,7 +96,7 @@ class ClassificationTrainer:
 
                 logits_ps, logits_sm, logits_mp = self.model(photometry, photometry_mask, spectra, metadata)
                 loss_ps, loss_sm, loss_mp = self.loss_fn(logits_ps, logits_sm, logits_mp)
-                loss = loss_ps + loss_sm + loss_mp
+                loss = self.ps_coef * loss_ps + self.sm_coef * loss_sm + self.mp_coef * loss_mp
 
                 self.update_stats(loss, logits_ps, logits_sm, logits_mp)
 
