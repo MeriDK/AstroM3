@@ -3,7 +3,6 @@ import wandb
 import random
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
@@ -11,7 +10,7 @@ from datetime import datetime
 
 from dataset import VPSMDataset
 from dataset2 import VPSMDatasetV2
-from trainer import ClassificationTrainer
+from trainer import CLIPTrainer
 from model import ModelV0, ModelV1
 
 CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
@@ -39,14 +38,14 @@ def get_datasets(config):
             v_prefix=config['v_prefix'], lamost_spec_dir=config['lamost_spec_dir'], min_samples=config['min_samples'],
             max_samples=config['max_samples'], classes=config['classes'], seq_len=config['seq_len'],
             phased=config['phased'], clip=config['clip'], aux=config['aux'], z_corr=config['z_corr'],
-            random_seed=config['random_seed']
+            random_seed=config['random_seed'], noise=config['noise'], noise_coef=config['noise_coef'],
         )
         val_dataset = VPSMDatasetV2(
             split='val', data_root=config['data_root'], file=config['file'], v_zip=config['v_zip'],
             v_prefix=config['v_prefix'], lamost_spec_dir=config['lamost_spec_dir'], min_samples=config['min_samples'],
             max_samples=config['max_samples'], classes=config['classes'], seq_len=config['seq_len'],
             phased=config['phased'], clip=config['clip'], aux=config['aux'], z_corr=config['z_corr'],
-            random_seed=config['random_seed']
+            random_seed=config['random_seed'], noise=False,
         )
     else:
         raise ValueError(f'Invalid dataset: {config["dataset"]}')
@@ -95,7 +94,7 @@ def classification(config):
     optimizer = get_optimizer(config, model)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config['factor'], patience=config['patience'])
 
-    classification_trainer = ClassificationTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
+    classification_trainer = CLIPTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
                                                    device=device, config=config, use_wandb=config['use_wandb'])
     classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
 
@@ -123,6 +122,8 @@ def get_config(random_seed):
         'classes': CLASSES,
         'min_samples': None,
         'max_samples': None,
+        'noise': False,  # for train data only
+        'noise_coef': 2,
 
         # Photometry
         'v_zip': 'asassnvarlc_vband_complete.zip',
@@ -140,37 +141,41 @@ def get_config(random_seed):
         # Photometry Model
         'p_encoder_layers': 8,
         'p_d_model': 128,
-        'p_dropout': 0,
+        'p_dropout': 0.2,
         'p_feature_size': 3,
         'p_n_heads': 4,
         'p_d_ff': 512,
 
         # Spectra Model
         's_hidden_dim': 512,
-        's_dropout': 0,
+        's_dropout': 0.2,
 
         # Metadata Model
         'm_hidden_dim': 512,
-        'm_dropout': 0,
+        'm_dropout': 0.2,
 
         # MultiModal Model
         'model': 'ModelV1',     # 'ModelV0' or 'ModelV1'
-        'hidden_dim': 256,
+        'hidden_dim': 1024,
+        'ps_coef': 1,
+        'mp_coef': 1,
+        'sm_coef': 1,
 
         # Training
-        'batch_size': 32,
+        'batch_size': 64,
         'lr': 1e-3,
-        'weight_decay': 0,
-        'epochs': 50,
+        'weight_decay': 1e-3,
+        'epochs': 100,
         'optimizer': 'AdamW',
-        'early_stopping_patience': 100,
+        'early_stopping_patience': 10,
 
         # Learning Rate Scheduler
         'factor': 0.3,
-        'patience': 50,
+        'patience': 5,
     }
 
-    config['p_feature_size'] += 4
+    if config['aux']:
+        config['p_feature_size'] += 4
 
     return config
 
