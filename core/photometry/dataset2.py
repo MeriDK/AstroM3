@@ -5,14 +5,11 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
-import logging
 from scipy import stats
 
 from util.parallelzipfile import ParallelZipFile as ZipFile
-from util.preprocess_data import clip_outliers
-
-# TODO clip outliers produces a lot of warnings
-logging.captureWarnings(True)
+from core.data.utils import get_vlc, preprocess_lc
+from core.multimodal.dataset2 import VPSMDatasetV2
 
 
 class VGDataset(Dataset):
@@ -147,13 +144,13 @@ class VGDataset(Dataset):
         X = X[sorted_indices]
 
         # 3 clip outliers
-        # TODO double check clip outliers function
-        if self.clip:
-            t, y, y_err = X[:, 0], X[:, 1], X[:, 2]
-            if len(t) > 20:
-                t, y, y_err, _, _, _, _, _ = clip_outliers(t, y, y_err, measurements_in_flux_units=True,
-                                                           initial_clip=(20, 5), clean_only=True)
-            X = np.vstack((t, y, y_err)).T
+        # # TODO double check clip outliers function
+        # if self.clip:
+        #     t, y, y_err = X[:, 0], X[:, 1], X[:, 2]
+        #     if len(t) > 20:
+        #         t, y, y_err, _, _, _, _, _ = clip_outliers(t, y, y_err, measurements_in_flux_units=True,
+        #                                                    initial_clip=(20, 5), clean_only=True)
+        #     X = np.vstack((t, y, y_err)).T
 
         # Calculate min max before normalization
         log_abs_min = 0 if min(X[:, 1]) == 0 else np.log(abs(min(X[:, 1])))
@@ -224,3 +221,23 @@ class VGDataset(Dataset):
         y = self.target2id[el['target']]
 
         return X, mask, y
+
+
+class VPSMDatasetV2Photo(Dataset):
+    def __init__(self, split='train', data_root='/home/mariia/AstroML/data/asassn/', file='preprocessed_data/full/spectra_and_v',
+                 v_zip='asassnvarlc_vband_complete.zip', v_prefix='vardb_files', min_samples=None, max_samples=None,
+                 classes=None, seq_len=200, phased=False, clip=False, aux=False, random_seed=42):
+
+        self.dataset = VPSMDatasetV2(split=split, data_root=data_root, file=file, v_zip=v_zip, v_prefix=v_prefix,
+                                     min_samples=min_samples, max_samples=max_samples, classes=classes, seq_len=seq_len,
+                                     phased=phased, clip=clip, aux=aux, random_seed=random_seed)
+        self.id2target = self.dataset.id2target
+        self.target2id = self.dataset.target2id
+        self.num_classes = self.dataset.num_classes
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        photometry, photometry_mask, spectra, metadata, label = self.dataset[idx]
+        return photometry, photometry_mask, label
