@@ -1,5 +1,4 @@
 from astropy.io import fits
-import json
 import os
 from io import BytesIO
 from scipy import stats
