@@ -11,7 +11,8 @@ from datetime import datetime
 from dataset import VPSMDataset
 from dataset2 import VPSMDatasetV2
 from trainer import CLIPTrainer
-from model import ModelV0, ModelV1
+from trainer2 import ClassificationTrainer
+from model import ModelV0, ModelV1, ModelV1Classification
 
 CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 
@@ -60,18 +61,18 @@ def get_dataloaders(train_dataset, val_dataset, config):
     return val_dataloader, train_dataloader
 
 
-def get_model(config):
-    if config['model'] == 'ModelV0':
-        model = ModelV0(config)
-    elif config['model'] == 'ModelV1':
-        model = ModelV1(config)
+def get_model(config, num_classes, device):
+    if config['model'] == 'ModelV1Classification':
+        model = ModelV1Classification(config, num_classes, device)
+    elif config['model'] in ('ModelV0', 'ModelV1'):
+        model = ModelV0(config) if config['model'] == 'ModelV0' else ModelV1(config)
+
+        if config['use_pretrain']:
+            model.load_state_dict(torch.load(config['use_pretrain']))
     else:
         raise ValueError(f'Invalid model: {config["model"]}')
 
     print(model)
-
-    if config['use_pretrain']:
-        model.load_state_dict(torch.load(config['use_pretrain']))
 
     return model
 
@@ -88,15 +89,25 @@ def classification(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', device)
 
-    model = get_model(config)
+    model = get_model(config, train_dataset.num_classes, device)
     model = model.to(device)
 
     optimizer = get_optimizer(config, model)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config['factor'], patience=config['patience'])
+    criterion = torch.nn.CrossEntropyLoss()
 
-    classification_trainer = CLIPTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
-                                                   device=device, config=config, use_wandb=config['use_wandb'])
-    classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
+    if config['training_mode'] == 'clip':
+        clip_trainer = CLIPTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
+                                   device=device, config=config, use_wandb=config['use_wandb'])
+        clip_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
+    elif config['training_mode'] == 'classification':
+        classification_trainer = ClassificationTrainer(model=model, optimizer=optimizer, scheduler=scheduler,
+                                                       criterion=criterion, device=device, config=config,
+                                                       use_wandb=config['use_wandb'])
+        classification_trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
+        classification_trainer.evaluate(val_dataloader, id2target=train_dataset.id2target)
+    else:
+        raise ValueError(f'Invalid training mode: {config["training_mode"]}')
 
 
 def set_random_seeds(random_seed):
@@ -108,12 +119,17 @@ def set_random_seeds(random_seed):
 
 def get_config(random_seed):
     config = {
-        'project': 'AstroCLIP',
+        'project': 'AstroCLIP',     # 'AstroCLIP', 'AstroCLIPResults'
+        'training_mode': 'clip',      # 'clip', 'classification'
+        'model': 'ModelV1',  # 'ModelV0' or 'ModelV1'
         'random_seed': random_seed,
         'use_wandb': True,
         'save_weights': True,
         'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
+        # 'use_pretrain': '/home/mariia/AstroML/weights/2024-07-25-14-18-es6hl0nb/weights-41.pth',
         'use_pretrain': None,
+        'freeze': False,
+        'fusion': 'avg',    # 'avg', 'concat'
 
         # Data General
         'dataset': 'VPSMDatasetV2',     # 'VPSMDataset' or 'VPSMDatasetV2'
@@ -155,7 +171,6 @@ def get_config(random_seed):
         'm_dropout': 0.2,
 
         # MultiModal Model
-        'model': 'ModelV1',     # 'ModelV0' or 'ModelV1'
         'hidden_dim': 1024,
         'ps_coef': 1,
         'mp_coef': 1,
@@ -181,7 +196,7 @@ def get_config(random_seed):
 
 
 def main():
-    random_seed = 66
+    random_seed = 123    # 42, 66, 0, 12, 123
     set_random_seeds(random_seed)
     config = get_config(random_seed)
 
