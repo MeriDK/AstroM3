@@ -58,3 +58,25 @@ class MetaClassifierV2(nn.Module):
         x = self.fc(x)
 
         return x
+
+
+class MetaModel(nn.Module):
+    def __init__(self, num_classes, input_dim=36, hidden_dim=512, dropout=0.5):
+        super(MetaModel, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+        self.fc = nn.Linear(hidden_dim, num_classes)
+
+    def forward(self, x):
+        x = self.model(x)
+        x = self.fc(x)
+
+        return x
+
