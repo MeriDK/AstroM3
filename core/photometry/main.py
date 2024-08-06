@@ -171,7 +171,7 @@ def set_random_seeds(random_seed):
 def get_config(random_seed):
 
     config = {
-        'project': 'vband-classification',
+        'project': 'AstroCLIPResults',
         'random_seed': random_seed,
         'use_wandb': True,
         'save_weights': True,
