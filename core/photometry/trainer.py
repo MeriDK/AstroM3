@@ -23,8 +23,8 @@ class ClassificationTrainer:
         self.weights_path = config['weights_path']
         self.context_length = config['seq_len']
         self.data_root = config['data_root']
-        self.scales = config['scales']
-        self.dataset_class = config['dataset_class']
+        self.scales = config['scales'] if 'scales' in config else None
+        self.dataset_class = config['dataset_class'] if 'dataset_class' in config else None
         self.use_wandb = use_wandb
         self.early_stopping = EarlyStopping(patience=config['early_stopping_patience'])
 
