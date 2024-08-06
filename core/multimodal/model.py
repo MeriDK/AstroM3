@@ -143,7 +143,7 @@ class ModelV1(nn.Module):
             activation='gelu', e_layers=config['p_encoder_layers']
         )
         self.spectra_encoder = GalSpecNet(dropout=config['s_dropout'])
-        self.metadata_encoder = MetaModel(hidden_dim=config['s_hidden_dim'], dropout=config['s_dropout'])
+        self.metadata_encoder = MetaModel(hidden_dim=config['m_hidden_dim'], dropout=config['m_dropout'])
 
         self.photometry_proj = nn.Linear(config['seq_len'] * config['p_d_model'], config['hidden_dim'])
         self.spectra_proj = nn.Linear(1184, config['hidden_dim'])
@@ -177,3 +177,43 @@ class ModelV1(nn.Module):
         logits_mp = logit_scale_mp * m_emb @ p_emb.T
 
         return logits_ps, logits_sm, logits_mp
+
+
+class ModelV1Classification(nn.Module):
+    def __init__(self, config, num_classes, device):
+        super(ModelV1Classification, self).__init__()
+
+        self.encoder = ModelV1(config)
+        self.encoder = self.encoder.to(device)
+        self.fusion = config['fusion']
+
+        if config['freeze']:
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+
+        if config['use_pretrain']:
+            self.encoder.load_state_dict(torch.load(config['use_pretrain'], weights_only=True))
+
+        in_features = config['hidden_dim'] * 3 if self.fusion == 'concat' else config['hidden_dim']
+
+        self.mlp = nn.Sequential(
+            nn.Linear(in_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 64),
+            nn.ReLU(),
+            nn.Linear(64, num_classes)
+        )
+
+    def forward(self, photometry, photometry_mask, spectra, metadata):
+        p_emb, s_emb, m_emb = self.encoder.get_embeddings(photometry, photometry_mask, spectra, metadata)
+
+        if self.fusion == 'concat':
+            emb = torch.cat((p_emb, s_emb, m_emb), dim=1)
+        elif self.fusion == 'avg':
+            emb = (p_emb + s_emb + m_emb) / 3
+        else:
+            raise NotImplementedError
+
+        logits = self.mlp(emb)
+
+        return logits
