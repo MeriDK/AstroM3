@@ -7,6 +7,8 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau, LinearLR
 from torch.utils.data import DataLoader
 from datetime import datetime
+import optuna
+from optuna.exceptions import DuplicatedStudyError
 
 from dataset import PSMDataset
 from model import Informer, GalSpecNet, MetaModel, AstroModel
@@ -52,32 +54,6 @@ def get_schedulers(config, optimizer):
     return scheduler, warmup_scheduler
 
 
-def run(config):
-    train_dataset = PSMDataset(config, split='train')
-    val_dataset = PSMDataset(config, split='val')
-
-    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Using', device)
-
-    model = get_model(config)
-    model = model.to(device)
-
-    optimizer = Adam(model.parameters(), lr=config['lr'], betas=(config['beta1'], config['beta2']),
-                     weight_decay=config['weight_decay'])
-    scheduler, warmup_scheduler = get_schedulers(config, optimizer)
-    criterion = CLIPLoss() if config['mode'] == 'clip' else torch.nn.CrossEntropyLoss()
-
-    trainer = Trainer(model=model, optimizer=optimizer, scheduler=scheduler, warmup_scheduler=warmup_scheduler,
-                      criterion=criterion, device=device, config=config)
-    trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
-
-    if config['mode'] != 'clip':
-        trainer.evaluate(val_dataloader, id2target=train_dataset.id2target)
-
-
 def set_random_seeds(random_seed):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
@@ -85,15 +61,14 @@ def set_random_seeds(random_seed):
     torch.backends.cudnn.deterministic = True
 
 
-def get_config():
+def get_config(trial):
     config = {
-        'project': 'AstroCLIPResults',
-        'mode': 'photo',    # 'clip' 'photo' 'spectra' 'meta' 'all'
+        'project': 'AstroCLIPOptuna',
         'random_seed': 42,  # 42, 66, 0, 12, 123
         'use_wandb': True,
+        'use_optuna': True,
         'save_weights': False,
         'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
-        # 'use_pretrain': '/home/mariia/AstroML/weights/2024-07-25-14-18-es6hl0nb/weights-41.pth',
         'use_pretrain': None,
         'freeze': False,
 
@@ -148,28 +123,84 @@ def get_config():
         'beta1': 0.9,
         'beta2': 0.999,
         'weight_decay': 0.01,
-        'epochs': 50,
-        'early_stopping_patience': 10,
+        'epochs': 100,
+        'early_stopping_patience': 6,
         'scheduler': 'ReduceLROnPlateau',  # 'ExponentialLR', 'ReduceLROnPlateau'
         'gamma': 0.9,  # for ExponentialLR scheduler
         'factor': 0.3,  # for ReduceLROnPlateau scheduler
-        'patience': 5,  # for ReduceLROnPlateau scheduler
+        'patience': 3,  # for ReduceLROnPlateau scheduler
         'warmup': True,
         'warmup_epochs': 10,
     }
 
+    if STUDY_NAME.startswith('clip'):
+        config['mode'] = 'clip'
+    elif STUDY_NAME.startswith('photo'):
+        config['mode'] = 'photo'
+    elif STUDY_NAME.startswith('spectra'):
+        config['mode'] = 'spectra'
+    elif STUDY_NAME.startswith('meta'):
+        config['mode'] = 'meta'
+    elif STUDY_NAME.startswith('psm'):
+        config['mode'] = 'all'
+    else:
+        raise NotImplementedError(f"Unknown study name {STUDY_NAME}")
+
     if config['aux']:
         config['p_enc_in'] += 4
+
+    if config['use_optuna']:
+        if config['mode'] in ('photo', 'all', 'clip'):
+            config['p_dropout'] = trial.suggest_float('p_dropout', 0.0, 0.4)
+
+        if config['mode'] in ('spectra', 'all', 'clip'):
+            config['s_dropout'] = trial.suggest_float('s_dropout', 0.0, 0.4)
+
+        if config['mode'] in ('meta', 'all', 'clip'):
+            config['m_dropout'] = trial.suggest_float('m_dropout', 0.0, 0.4)
+
+        config['lr'] = trial.suggest_float('lr', 1e-5, 1e-2, log=True)
+        config['factor'] = trial.suggest_float('factor', 0.1, 1.0)
+        config['beta1'] = trial.suggest_float('beta1', 0.7, 0.99)
+        config['weight_decay'] = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
 
     return config
 
 
-def main():
-    config = get_config()
+def run(config, trial):
+    train_dataset = PSMDataset(config, split='train')
+    val_dataset = PSMDataset(config, split='val')
+
+    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using', device)
+
+    model = get_model(config)
+    model = model.to(device)
+
+    optimizer = Adam(model.parameters(), lr=config['lr'], betas=(config['beta1'], config['beta2']),
+                     weight_decay=config['weight_decay'])
+    scheduler, warmup_scheduler = get_schedulers(config, optimizer)
+    criterion = CLIPLoss() if config['mode'] == 'clip' else torch.nn.CrossEntropyLoss()
+
+    trainer = Trainer(model=model, optimizer=optimizer, scheduler=scheduler, warmup_scheduler=warmup_scheduler,
+                      criterion=criterion, device=device, config=config, trial=trial)
+    best_val_loss = trainer.train(train_dataloader, val_dataloader, epochs=config['epochs'])
+
+    if config['mode'] != 'clip':
+        trainer.evaluate(val_dataloader, id2target=train_dataset.id2target)
+
+    return best_val_loss
+
+
+def objective(trial):
+    config = get_config(trial)
     set_random_seeds(config['random_seed'])
 
     if config['use_wandb']:
-        wandb_run = wandb.init(project=config['project'], config=config)
+        wandb_run = wandb.init(project=config['project'], config=config, group=STUDY_NAME, reinit=True)
         config.update(wandb.config)
 
         config['run_id'] = wandb_run.id
@@ -179,9 +210,32 @@ def main():
     if config['save_weights']:
         os.makedirs(config['weights_path'], exist_ok=True)
 
-    run(config)
+    best_val_loss = run(config, trial)
     wandb.finish()
+
+    return best_val_loss
 
 
 if __name__ == '__main__':
-    main()
+    STUDY_NAME = 'psm'
+
+    if STUDY_NAME == 'clip':
+        storage = 'mysql://root:qwerty123@localhost/clip'
+    elif STUDY_NAME == 'photo':
+        storage = 'mysql://root:qwerty123@localhost/photo?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
+    elif STUDY_NAME == 'meta':
+        storage = 'mysql://root:qwerty123@localhost/meta?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    elif STUDY_NAME == 'psm':
+        storage = 'mysql://root:qwerty123@localhost/psm?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    else:
+        raise ValueError(f'study_name {STUDY_NAME} not recognized')
+
+    try:
+        study = optuna.create_study(study_name=STUDY_NAME, storage=storage, direction='minimize',
+                                    pruner=optuna.pruners.NopPruner())
+        print(f"Study '{STUDY_NAME}' created.")
+    except DuplicatedStudyError:
+        study = optuna.load_study(study_name=STUDY_NAME, storage=storage, pruner=optuna.pruners.NopPruner())
+        print(f"Study '{STUDY_NAME}' loaded.")
+
+    study.optimize(objective, n_trials=25)

@@ -41,8 +41,6 @@ class Informer(nn.Module):
             ) for _ in range(self.e_layers)
         ]
         self.encoder = Encoder(attn_layers, norm_layer=torch.nn.LayerNorm(self.d_model))
-
-        self.act = F.gelu
         self.dropout = nn.Dropout(self.dropout)
 
         if self.classification:
@@ -115,17 +113,16 @@ class MetaModel(nn.Module):
             nn.Linear(self.input_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Dropout(self.dropout),
-            nn.Linear(self.hidden_dim, self.hidden_dim)
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout),
         )
-
-        self.dropout = nn.Dropout(self.dropout)
 
         if self.classification:
             self.fc = nn.Linear(self.hidden_dim, config['num_classes'])
 
     def forward(self, x):
         x = self.model(x)
-        x = self.dropout(x)
 
         if self.classification:
             x = self.fc(x)

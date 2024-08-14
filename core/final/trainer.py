@@ -7,25 +7,32 @@ from sklearn.metrics import confusion_matrix
 from tqdm import tqdm
 import wandb
 import os
+import optuna
+
 from util.early_stopping import EarlyStopping
 
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, criterion, device, config):
+    def __init__(self, model, optimizer, scheduler, warmup_scheduler, criterion, device, config, trial=None):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.warmup_scheduler = warmup_scheduler
         self.criterion = criterion
         self.device = device
+        self.trial = trial
+
         self.mode = config['mode']
         self.save_weights = config['save_weights']
         self.weights_path = config['weights_path']
         self.use_wandb = config['use_wandb']
         self.early_stopping = EarlyStopping(patience=config['early_stopping_patience'])
+        self.warmup_epochs = config['warmup_epochs']
 
         self.total_loss = []
         self.total_correct_predictions = 0
         self.total_predictions = 0
+        self.best_val_loss = np.inf
 
     def store_weights(self, epoch):
         torch.save(self.model.state_dict(), os.path.join(self.weights_path, f'weights-{epoch}.pth'))
@@ -147,8 +154,22 @@ class Trainer:
             train_loss, train_acc = self.train_epoch(train_dataloader)
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
-            self.scheduler.step()
-            current_lr = self.scheduler.get_last_lr()[0]
+            self.best_val_loss = min(val_loss, self.best_val_loss)
+
+            if self.trial:
+                self.trial.report(val_loss, epoch)
+
+                if self.trial.should_prune():
+                    print('Prune')
+                    wandb.finish()
+                    raise optuna.exceptions.TrialPruned()
+
+            if self.warmup_scheduler and epoch < self.warmup_epochs:
+                self.warmup_scheduler.step()
+                current_lr = self.warmup_scheduler.get_last_lr()[0]
+            else:
+                self.scheduler.step(val_loss)
+                current_lr = self.scheduler.get_last_lr()[0]
 
             if self.use_wandb:
                 wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
@@ -163,6 +184,8 @@ class Trainer:
             if self.early_stopping.step(val_loss):
                 print(f'Early stopping at epoch {epoch}')
                 break
+
+        return self.best_val_loss
 
     def evaluate(self, val_dataloader, id2target):
         self.model.eval()
@@ -204,6 +227,4 @@ class Trainer:
         if self.use_wandb:
             wandb.log({'conf_matrix': wandb.Image(fig)})
 
-
-
-
+        return conf_matrix

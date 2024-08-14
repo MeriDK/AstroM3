@@ -108,7 +108,11 @@ class PSMDataset(Dataset):
         # Normalize
         mean = X[:, 1].mean()
         std = stats.median_abs_deviation(X[:, 1])
-        X[:, 0] = (X[:, 0] - X[:, 0].min()) / (X[:, 0].max() - X[:, 0].min())
+
+        # If phased time will be in range (0, 1) anyway
+        if not self.phased:
+            X[:, 0] = (X[:, 0] - X[:, 0].min()) / (X[:, 0].max() - X[:, 0].min())
+
         X[:, 1] = (X[:, 1] - mean) / std
         X[:, 2] = X[:, 2] / std
 
@@ -124,6 +128,10 @@ class PSMDataset(Dataset):
         # Phase
         if self.phased:
             X = np.vstack(((X[:, 0] % period) / period, X[:, 1], X[:, 2])).T
+
+            # Sort again cause phasing ruined the order
+            sorted_indices = np.argsort(X[:, 0])
+            X = X[sorted_indices]
 
         # Pad if needed and create mask
         mask = np.ones(self.seq_len)
@@ -164,7 +172,8 @@ class PSMDataset(Dataset):
         spectra = self.readLRSFits(os.path.join(self.lamost_spec_dir, el['spec_filename']))
         metadata = el[self.meta_cols].values.astype(np.float32)
 
-        photometry, photometry_mask = self.preprocess_lc(photometry, el['period'])
+        # "period" is metadata and is log and norm of "org_period" so we have to use the original period
+        photometry, photometry_mask = self.preprocess_lc(photometry, el['org_period'])
         spectra = self.preprocess_spectra(spectra)
 
         return photometry, photometry_mask, spectra, metadata, label
