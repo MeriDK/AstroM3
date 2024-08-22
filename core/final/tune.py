@@ -26,6 +26,7 @@ METADATA_COLS = [
 
 
 def get_model(config):
+
     if config['mode'] == 'photo':
         model = Informer(config)
     elif config['mode'] == 'spectra':
@@ -34,6 +35,24 @@ def get_model(config):
         model = MetaModel(config)
     else:
         model = AstroModel(config)
+
+    if config['use_pretrain'] and config['use_pretrain'].startswith('CLIP'):
+        weights = torch.load(config['use_pretrain'][4:], weights_only=True)
+
+        if config['mode'] == 'photo':
+            weights_prefix = 'photometry_encoder'
+        elif config['mode'] == 'spectra':
+            weights_prefix = 'spectra_encoder'
+        elif config['mode'] == 'meta':
+            weights_prefix = 'metadata_encoder'
+        else:
+            weights_prefix = None
+
+        if weights_prefix:
+            weights = {k[len(weights_prefix) + 1:]: v for k, v in weights.items() if k.startswith(weights_prefix)}
+
+        model.load_state_dict(weights, strict=False)
+        print('Loaded weights from {}'.format(config['use_pretrain']))
 
     return model
 
@@ -56,9 +75,11 @@ def get_schedulers(config, optimizer):
 
 def set_random_seeds(random_seed):
     torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
     torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def get_config(trial):
@@ -69,7 +90,6 @@ def get_config(trial):
         'use_optuna': True,
         'save_weights': False,
         'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
-        'use_pretrain': None,
         'freeze': False,
 
         # Data General
@@ -123,7 +143,6 @@ def get_config(trial):
         'beta1': 0.9,
         'beta2': 0.999,
         'weight_decay': 0.01,
-        'epochs': 100,
         'early_stopping_patience': 6,
         'scheduler': 'ReduceLROnPlateau',  # 'ExponentialLR', 'ReduceLROnPlateau'
         'gamma': 0.9,  # for ExponentialLR scheduler
@@ -131,20 +150,39 @@ def get_config(trial):
         'patience': 3,  # for ReduceLROnPlateau scheduler
         'warmup': True,
         'warmup_epochs': 10,
+        'clip_grad': False,
+        'clip_value': 45
     }
 
     if STUDY_NAME.startswith('clip'):
         config['mode'] = 'clip'
+        config['epochs'] = 100
+        config['clip_grad'] = True
+        config['clip_value'] = 45
     elif STUDY_NAME.startswith('photo'):
         config['mode'] = 'photo'
+        config['epochs'] = 50
+        config['clip_grad'] = True
+        config['clip_value'] = 10
     elif STUDY_NAME.startswith('spectra'):
         config['mode'] = 'spectra'
+        config['epochs'] = 50
+        config['clip_grad'] = False
     elif STUDY_NAME.startswith('meta'):
         config['mode'] = 'meta'
+        config['epochs'] = 50
+        config['clip_grad'] = False
     elif STUDY_NAME.startswith('psm'):
         config['mode'] = 'all'
+        config['epochs'] = 50
+        config['clip_grad'] = False
     else:
         raise NotImplementedError(f"Unknown study name {STUDY_NAME}")
+
+    if STUDY_NAME in ('metaclip', 'photoclip', 'spectraclip', 'psmclip'):
+        config['use_pretrain'] = 'CLIP/home/mariia/AstroML/weights/2024-08-15-13-48-4l6f2x3p/weights-75.pth'
+    else:
+        config['use_pretrain'] = None
 
     if config['aux']:
         config['p_enc_in'] += 4
@@ -163,6 +201,8 @@ def get_config(trial):
         config['factor'] = trial.suggest_float('factor', 0.1, 1.0)
         config['beta1'] = trial.suggest_float('beta1', 0.7, 0.99)
         config['weight_decay'] = trial.suggest_float('weight_decay', 1e-5, 1e-1, log=True)
+
+    config['study_name'] = STUDY_NAME
 
     return config
 
@@ -217,16 +257,26 @@ def objective(trial):
 
 
 if __name__ == '__main__':
-    STUDY_NAME = 'psm'
+    STUDY_NAME = 'photo'
 
     if STUDY_NAME == 'clip':
         storage = 'mysql://root:qwerty123@localhost/clip'
+    elif STUDY_NAME == 'spectraclip':
+        storage = 'mysql://root:qwerty123@localhost/spectraclip'
     elif STUDY_NAME == 'photo':
         storage = 'mysql://root:qwerty123@localhost/photo?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
+    elif STUDY_NAME == 'spectra':
+        storage = 'mysql://root:qwerty123@localhost/spectra?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
     elif STUDY_NAME == 'meta':
         storage = 'mysql://root:qwerty123@localhost/meta?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    elif STUDY_NAME == 'metaclip':
+        storage = 'mysql://root:qwerty123@localhost/metaclip?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
     elif STUDY_NAME == 'psm':
         storage = 'mysql://root:qwerty123@localhost/psm?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    elif STUDY_NAME == 'photoclip':
+        storage = 'mysql://root:qwerty123@localhost/photoclip?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    elif STUDY_NAME == 'psmclip':
+        storage = 'mysql://root:qwerty123@localhost/psmclip?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
     else:
         raise ValueError(f'study_name {STUDY_NAME} not recognized')
 
