@@ -33,6 +33,23 @@ def get_model(config):
     else:
         model = AstroModel(config)
 
+    if config['use_pretrain'] and config['use_pretrain'].startswith('CLIP'):
+        weights = torch.load(config['use_pretrain'][4:], weights_only=True)
+
+        if config['mode'] == 'photo':
+            weights_prefix = 'photometry_encoder'
+        elif config['mode'] == 'spectra':
+            weights_prefix = 'spectra_encoder'
+        elif config['mode'] == 'meta':
+            weights_prefix = 'metadata_encoder'
+        else:
+            weights_prefix = None
+
+        if weights_prefix:
+            weights = {k[len(weights_prefix) + 1:]: v for k, v in weights.items() if k.startswith(weights_prefix)}
+
+        model.load_state_dict(weights, strict=False)
+
     return model
 
 
@@ -80,26 +97,29 @@ def run(config):
 
 def set_random_seeds(random_seed):
     torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
     torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def get_config():
     config = {
         'project': 'AstroCLIPResults',
-        'mode': 'photo',    # 'clip' 'photo' 'spectra' 'meta' 'all'
-        'random_seed': 42,  # 42, 66, 0, 12, 123
+        'mode': 'all',    # 'clip' 'photo' 'spectra' 'meta' 'all'
+        'config_from': 'meridk/AstroCLIPResults/zgfcm56p',
+        'random_seed': 123,  # 42, 66, 0, 12, 123
         'use_wandb': True,
-        'save_weights': False,
+        'save_weights': True,
         'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
-        # 'use_pretrain': '/home/mariia/AstroML/weights/2024-07-25-14-18-es6hl0nb/weights-41.pth',
+        # 'use_pretrain': 'CLIP/home/mariia/AstroML/weights/2024-08-14-14-05-zmjau1cu/weights-51.pth',
         'use_pretrain': None,
         'freeze': False,
 
         # Data General
         'data_root': '/home/mariia/AstroML/data/asassn/',
-        'file': 'preprocessed_data/full/spectra_and_v',
+        'file': 'preprocessed_data/sub10/spectra_and_v',
         'classes': CLASSES,
         'num_classes': len(CLASSES),
         'meta_cols': METADATA_COLS,
@@ -144,22 +164,34 @@ def get_config():
 
         # Training
         'batch_size': 512,
-        'lr': 0.0003,
+        'lr': 0.001,
         'beta1': 0.9,
         'beta2': 0.999,
         'weight_decay': 0.01,
-        'epochs': 50,
-        'early_stopping_patience': 10,
+        'epochs': 100,
+        'early_stopping_patience': 6,
         'scheduler': 'ReduceLROnPlateau',  # 'ExponentialLR', 'ReduceLROnPlateau'
         'gamma': 0.9,  # for ExponentialLR scheduler
         'factor': 0.3,  # for ReduceLROnPlateau scheduler
-        'patience': 5,  # for ReduceLROnPlateau scheduler
+        'patience': 3,  # for ReduceLROnPlateau scheduler
         'warmup': True,
         'warmup_epochs': 10,
+        'clip_grad': True,
+        'clip_value': 45
     }
 
     if config['aux']:
         config['p_enc_in'] += 4
+
+    if config['config_from']:
+        print(f"Copying params from the {config['config_from']} run")
+        old_config = wandb.Api().run(config['config_from']).config
+
+        for el in old_config:
+            if el in ['p_dropout', 's_dropout', 'm_dropout', 'lr', 'beta1', 'weight_decay', 'epochs',
+                      'early_stopping_patience', 'factor', 'patience', 'warmup', 'warmup_epochs', 'clip_grad',
+                      'clip_value', 'use_pretrain', 'freeze']:
+                config[el] = old_config[el]
 
     return config
 
