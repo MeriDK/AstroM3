@@ -28,14 +28,16 @@ class Trainer:
         self.use_wandb = config['use_wandb']
         self.early_stopping = EarlyStopping(patience=config['early_stopping_patience'])
         self.warmup_epochs = config['warmup_epochs']
+        self.clip_grad = config['clip_grad']
+        self.clip_value = config['clip_value']
 
         self.total_loss = []
         self.total_correct_predictions = 0
         self.total_predictions = 0
-        self.best_val_loss = np.inf
 
     def store_weights(self, epoch):
         torch.save(self.model.state_dict(), os.path.join(self.weights_path, f'weights-{epoch}.pth'))
+        torch.save(self.model.state_dict(), os.path.join(self.weights_path, f'weights-best.pth'))
 
     def zero_stats(self):
         self.total_loss = []
@@ -102,6 +104,16 @@ class Trainer:
 
         return loss
 
+    def get_gradient_norm(self):
+        total_norm = 0.0
+
+        for param in self.model.parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+
+        return total_norm ** 0.5
+
     def train_epoch(self, train_dataloader):
         self.model.train()
         self.zero_stats()
@@ -125,6 +137,18 @@ class Trainer:
                     wandb.log({'step_loss': loss.item()})
 
             loss.backward()
+
+            if self.use_wandb:
+                grad_norm = self.get_gradient_norm()
+                wandb.log({'grad_norm': grad_norm})
+
+            if self.clip_grad:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_value)
+
+                if self.use_wandb:
+                    clip_grad_norm = self.get_gradient_norm()
+                    wandb.log({'clip_grad_norm': clip_grad_norm})
+
             self.optimizer.step()
 
         loss, acc = self.calculate_stats()
@@ -150,11 +174,14 @@ class Trainer:
         return loss, acc
 
     def train(self, train_dataloader, val_dataloader, epochs):
+        best_val_loss = np.inf
+        best_val_acc = 0
+
         for epoch in range(epochs):
             train_loss, train_acc = self.train_epoch(train_dataloader)
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
-            self.best_val_loss = min(val_loss, self.best_val_loss)
+            best_val_loss = min(val_loss, best_val_loss)
 
             if self.trial:
                 self.trial.report(val_loss, epoch)
@@ -175,8 +202,12 @@ class Trainer:
                 wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
                            'learning_rate': current_lr, 'epoch': epoch})
 
-            if self.save_weights:
+            if self.save_weights and best_val_acc < val_acc:
                 self.store_weights(epoch)
+                best_val_acc = val_acc
+
+                if self.use_wandb:
+                    wandb.log({'step_loss': best_val_acc})
 
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
@@ -185,7 +216,7 @@ class Trainer:
                 print(f'Early stopping at epoch {epoch}')
                 break
 
-        return self.best_val_loss
+        return best_val_loss
 
     def evaluate(self, val_dataloader, id2target):
         self.model.eval()
