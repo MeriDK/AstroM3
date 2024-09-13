@@ -202,12 +202,14 @@ class Trainer:
                 wandb.log({'train_loss': train_loss, 'val_loss': val_loss, 'train_acc': train_acc, 'val_acc': val_acc,
                            'learning_rate': current_lr, 'epoch': epoch})
 
-            if self.save_weights and best_val_acc < val_acc:
-                self.store_weights(epoch)
+            if best_val_acc < val_acc:
                 best_val_acc = val_acc
 
                 if self.use_wandb:
-                    wandb.log({'step_loss': best_val_acc})
+                    wandb.log({'best_val_acc': best_val_acc})
+
+                if self.save_weights:
+                    self.store_weights(epoch)
 
             print(f'Epoch {epoch}: Train Loss {round(train_loss, 4)} \t Val Loss {round(val_loss, 4)} \t \
                     Train Acc {round(train_acc, 4)} \t Val Acc {round(val_acc, 4)}')
