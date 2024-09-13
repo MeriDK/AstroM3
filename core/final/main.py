@@ -15,12 +15,12 @@ from trainer import Trainer
 
 CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 METADATA_COLS = [
-    'mean_vmag', 'amplitude', 'period', 'phot_g_mean_mag', 'e_phot_g_mean_mag', 'lksl_statistic',
-    'rfr_score', 'phot_bp_mean_mag', 'e_phot_bp_mean_mag', 'phot_rp_mean_mag', 'e_phot_rp_mean_mag',
-    'bp_rp', 'parallax', 'parallax_error', 'parallax_over_error', 'pmra', 'pmra_error', 'pmdec',
+    'mean_vmag',  'phot_g_mean_mag', 'e_phot_g_mean_mag', 'phot_bp_mean_mag', 'e_phot_bp_mean_mag', 'phot_rp_mean_mag',
+    'e_phot_rp_mean_mag', 'bp_rp', 'parallax', 'parallax_error', 'parallax_over_error', 'pmra', 'pmra_error', 'pmdec',
     'pmdec_error', 'j_mag', 'e_j_mag', 'h_mag', 'e_h_mag', 'k_mag', 'e_k_mag', 'w1_mag', 'e_w1_mag',
-    'w2_mag', 'e_w2_mag', 'w3_mag', 'w4_mag', 'j_k', 'w1_w2', 'w3_w4', 'pm', 'ruwe'
+    'w2_mag', 'e_w2_mag', 'w3_mag', 'w4_mag', 'j_k', 'w1_w2', 'w3_w4', 'pm', 'ruwe', 'l', 'b'
 ]
+PHOTO_COLS = ['amplitude', 'period', 'lksl_statistic', 'rfr_score']
 
 
 def get_model(config):
@@ -73,7 +73,8 @@ def run(config):
     train_dataset = PSMDataset(config, split='train')
     val_dataset = PSMDataset(config, split='val')
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True,
+                                  num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -106,10 +107,10 @@ def set_random_seeds(random_seed):
 
 def get_config():
     config = {
-        'project': 'AstroCLIPResults',
-        'mode': 'all',    # 'clip' 'photo' 'spectra' 'meta' 'all'
-        'config_from': 'meridk/AstroCLIPResults/zgfcm56p',
-        'random_seed': 123,  # 42, 66, 0, 12, 123
+        'project': 'AstroCLIPOptuna3',
+        'mode': 'meta',    # 'clip' 'photo' 'spectra' 'meta' 'all'
+        'config_from': 'meridk/AstroCLIPOptuna3//0r838fa4',    # 'meridk/AstroCLIPResults/d2u52yml',
+        'random_seed': 12,  # 42, 66, 0, 12, 123
         'use_wandb': True,
         'save_weights': True,
         'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
@@ -119,10 +120,11 @@ def get_config():
 
         # Data General
         'data_root': '/home/mariia/AstroML/data/asassn/',
-        'file': 'preprocessed_data/sub10/spectra_and_v',
+        'file': 'preprocessed_data/full_lb12/spectra_and_v',
         'classes': CLASSES,
         'num_classes': len(CLASSES),
         'meta_cols': METADATA_COLS,
+        'photo_cols': PHOTO_COLS,
         'min_samples': None,
         'max_samples': None,
 
@@ -131,11 +133,14 @@ def get_config():
         'v_prefix': 'vardb_files',
         'seq_len': 200,
         'phased': False,
-        'aux': True,
+        'p_aux': True,
 
         # Spectra
         'lamost_spec_dir': 'Spectra/v2',
-        'spectra_v_file': 'spectra_v_merged.csv',
+        's_mad': True,     # if True use mad for norm else std
+        's_aux': True,
+        's_err': True,
+        's_err_norm': True,
 
         # Photometry Model
         'p_enc_in': 3,
@@ -177,20 +182,28 @@ def get_config():
         'warmup': True,
         'warmup_epochs': 10,
         'clip_grad': True,
-        'clip_value': 45
+        'clip_value': 5
     }
 
-    if config['aux']:
-        config['p_enc_in'] += 4
+    if config['p_aux']:
+        config['p_enc_in'] += len(config['photo_cols']) + 2     # +2 for mad and delta t
+
+    if config['s_aux']:
+        config['s_conv_channels'][0] += 1
+
+    if config['s_err']:
+        config['s_conv_channels'][0] += 1
 
     if config['config_from']:
         print(f"Copying params from the {config['config_from']} run")
         old_config = wandb.Api().run(config['config_from']).config
 
         for el in old_config:
-            if el in ['p_dropout', 's_dropout', 'm_dropout', 'lr', 'beta1', 'weight_decay', 'epochs',
-                      'early_stopping_patience', 'factor', 'patience', 'warmup', 'warmup_epochs', 'clip_grad',
-                      'clip_value', 'use_pretrain', 'freeze']:
+            if el in [
+                'p_dropout', 's_dropout', 'm_dropout', 'lr', 'beta1', 'weight_decay', 'epochs',
+                'early_stopping_patience', 'factor', 'patience', 'warmup', 'warmup_epochs', 'clip_grad', 'clip_value',
+                'use_pretrain', 'freeze', 'phased', 'p_aux', 's_aux', 's_err',
+            ]:
                 config[el] = old_config[el]
 
     return config
