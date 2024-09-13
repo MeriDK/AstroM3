@@ -17,12 +17,12 @@ from trainer import Trainer
 
 CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 METADATA_COLS = [
-    'mean_vmag', 'amplitude', 'period', 'phot_g_mean_mag', 'e_phot_g_mean_mag', 'lksl_statistic',
-    'rfr_score', 'phot_bp_mean_mag', 'e_phot_bp_mean_mag', 'phot_rp_mean_mag', 'e_phot_rp_mean_mag',
-    'bp_rp', 'parallax', 'parallax_error', 'parallax_over_error', 'pmra', 'pmra_error', 'pmdec',
+    'mean_vmag',  'phot_g_mean_mag', 'e_phot_g_mean_mag', 'phot_bp_mean_mag', 'e_phot_bp_mean_mag', 'phot_rp_mean_mag',
+    'e_phot_rp_mean_mag', 'bp_rp', 'parallax', 'parallax_error', 'parallax_over_error', 'pmra', 'pmra_error', 'pmdec',
     'pmdec_error', 'j_mag', 'e_j_mag', 'h_mag', 'e_h_mag', 'k_mag', 'e_k_mag', 'w1_mag', 'e_w1_mag',
-    'w2_mag', 'e_w2_mag', 'w3_mag', 'w4_mag', 'j_k', 'w1_w2', 'w3_w4', 'pm', 'ruwe'
+    'w2_mag', 'e_w2_mag', 'w3_mag', 'w4_mag', 'j_k', 'w1_w2', 'w3_w4', 'pm', 'ruwe', 'l', 'b'
 ]
+PHOTO_COLS = ['amplitude', 'period', 'lksl_statistic', 'rfr_score']
 
 
 def get_model(config):
@@ -84,7 +84,7 @@ def set_random_seeds(random_seed):
 
 def get_config(trial):
     config = {
-        'project': 'AstroCLIPOptuna',
+        'project': 'AstroCLIPOptuna3',
         'random_seed': 42,  # 42, 66, 0, 12, 123
         'use_wandb': True,
         'use_optuna': True,
@@ -94,10 +94,11 @@ def get_config(trial):
 
         # Data General
         'data_root': '/home/mariia/AstroML/data/asassn/',
-        'file': 'preprocessed_data/full/spectra_and_v',
+        'file': 'preprocessed_data/full_lb/spectra_and_v',
         'classes': CLASSES,
         'num_classes': len(CLASSES),
         'meta_cols': METADATA_COLS,
+        'photo_cols': PHOTO_COLS,
         'min_samples': None,
         'max_samples': None,
 
@@ -106,11 +107,14 @@ def get_config(trial):
         'v_prefix': 'vardb_files',
         'seq_len': 200,
         'phased': False,
-        'aux': True,
+        'p_aux': True,
 
         # Spectra
         'lamost_spec_dir': 'Spectra/v2',
-        'spectra_v_file': 'spectra_v_merged.csv',
+        's_mad': True,  # if True use mad for norm else std
+        's_aux': True,
+        's_err': True,
+        's_err_norm': True,
 
         # Photometry Model
         'p_enc_in': 3,
@@ -163,11 +167,12 @@ def get_config(trial):
         config['mode'] = 'photo'
         config['epochs'] = 50
         config['clip_grad'] = True
-        config['clip_value'] = 10
+        config['clip_value'] = 5
     elif STUDY_NAME.startswith('spectra'):
         config['mode'] = 'spectra'
         config['epochs'] = 50
-        config['clip_grad'] = False
+        config['clip_grad'] = True
+        config['clip_value'] = 5
     elif STUDY_NAME.startswith('meta'):
         config['mode'] = 'meta'
         config['epochs'] = 50
@@ -180,12 +185,18 @@ def get_config(trial):
         raise NotImplementedError(f"Unknown study name {STUDY_NAME}")
 
     if STUDY_NAME in ('metaclip', 'photoclip', 'spectraclip', 'psmclip'):
-        config['use_pretrain'] = 'CLIP/home/mariia/AstroML/weights/2024-08-15-13-48-4l6f2x3p/weights-75.pth'
+        config['use_pretrain'] = 'CLIP/home/mariia/AstroML/weights/2024-09-12-13-21-03ai5zsz/weights-best.pth'
     else:
         config['use_pretrain'] = None
 
-    if config['aux']:
-        config['p_enc_in'] += 4
+    if config['p_aux']:
+        config['p_enc_in'] += len(config['photo_cols']) + 2     # +2 for mad and delta t
+
+    if config['s_aux']:
+        config['s_conv_channels'][0] += 1
+
+    if config['s_err']:
+        config['s_conv_channels'][0] += 1
 
     if config['use_optuna']:
         if config['mode'] in ('photo', 'all', 'clip'):
@@ -211,7 +222,8 @@ def run(config, trial):
     train_dataset = PSMDataset(config, split='train')
     val_dataset = PSMDataset(config, split='val')
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True,
+                                  num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -257,28 +269,18 @@ def objective(trial):
 
 
 if __name__ == '__main__':
-    STUDY_NAME = 'photo'
+    STUDY_NAME = 'spectraclip'
+    server = 'lbl'
 
-    if STUDY_NAME == 'clip':
-        storage = 'mysql://root:qwerty123@localhost/clip'
-    elif STUDY_NAME == 'spectraclip':
-        storage = 'mysql://root:qwerty123@localhost/spectraclip'
-    elif STUDY_NAME == 'photo':
-        storage = 'mysql://root:qwerty123@localhost/photo?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
-    elif STUDY_NAME == 'spectra':
-        storage = 'mysql://root:qwerty123@localhost/spectra?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
-    elif STUDY_NAME == 'meta':
-        storage = 'mysql://root:qwerty123@localhost/meta?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
-    elif STUDY_NAME == 'metaclip':
-        storage = 'mysql://root:qwerty123@localhost/metaclip?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
-    elif STUDY_NAME == 'psm':
-        storage = 'mysql://root:qwerty123@localhost/psm?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
-    elif STUDY_NAME == 'photoclip':
-        storage = 'mysql://root:qwerty123@localhost/photoclip?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
-    elif STUDY_NAME == 'psmclip':
-        storage = 'mysql://root:qwerty123@localhost/psmclip?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    # no socket - lbl2, socket 2 - lbl3, socket 3 - lbl
+    if server == 'lbl':
+        socket = '?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
+    elif server == 'lbl2':
+        socket = ''
     else:
-        raise ValueError(f'study_name {STUDY_NAME} not recognized')
+        socket = '?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
+
+    storage = f'mysql://root:qwerty123@localhost/{STUDY_NAME}{socket}'
 
     try:
         study = optuna.create_study(study_name=STUDY_NAME, storage=storage, direction='minimize',
@@ -288,4 +290,4 @@ if __name__ == '__main__':
         study = optuna.load_study(study_name=STUDY_NAME, storage=storage, pruner=optuna.pruners.NopPruner())
         print(f"Study '{STUDY_NAME}' loaded.")
 
-    study.optimize(objective, n_trials=25)
+    study.optimize(objective, n_trials=100)
