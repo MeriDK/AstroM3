@@ -20,13 +20,18 @@ class PSMDataset(Dataset):
         self.v_prefix = config['v_prefix']
         self.lamost_spec_dir = os.path.join(self.data_root, config['lamost_spec_dir'])
         self.meta_cols = config['meta_cols']
+        self.photo_cols = config['photo_cols']
 
         self.min_samples = config['min_samples']
         self.max_samples = config['max_samples']
         self.classes = config['classes']
         self.seq_len = config['seq_len']
         self.phased = config['phased']
-        self.aux = config['aux']
+        self.p_aux = config['p_aux']
+        self.s_mad = config['s_mad']
+        self.s_aux = config['s_aux']
+        self.s_err = config['s_err']
+        self.s_err_norm = config['s_err_norm']
 
         self.random_seed = config['random_seed']
         np.random.seed(self.random_seed)
@@ -96,25 +101,23 @@ class PSMDataset(Dataset):
 
         return np.vstack((wavelength, specflux, ivar)).T
 
-    def preprocess_lc(self, X, period):
+    def preprocess_lc(self, X, period, aux_values):
         # Sort based on HJD
         sorted_indices = np.argsort(X[:, 0])
         X = X[sorted_indices]
 
-        # Calculate min max before normalization
-        log_abs_min = 0 if min(X[:, 1]) == 0 else np.log(abs(min(X[:, 1])))
-        log_abs_max = np.log(abs(max(X[:, 1])))
-
         # Normalize
         mean = X[:, 1].mean()
-        std = stats.median_abs_deviation(X[:, 1])
+        mad = stats.median_abs_deviation(X[:, 1])
+        X[:, 1] = (X[:, 1] - mean) / mad
+        X[:, 2] = X[:, 2] / mad
 
-        # If phased time will be in range (0, 1) anyway
+        # save delta t before scaling
+        delta_t = (X[:, 0].max() - X[:, 0].min()) / 365
+
         if not self.phased:
+            # scale time from 0 to 1
             X[:, 0] = (X[:, 0] - X[:, 0].min()) / (X[:, 0].max() - X[:, 0].min())
-
-        X[:, 1] = (X[:, 1] - mean) / std
-        X[:, 2] = X[:, 2] / std
 
         # Trim if longer than seq_len
         if X.shape[0] > self.seq_len:
@@ -140,12 +143,12 @@ class PSMDataset(Dataset):
             X = np.pad(X, ((0, self.seq_len - X.shape[0]), (0, 0)), 'constant', constant_values=(0,))
 
         # Add aux
-        if self.aux:
-            log_abs_mean = np.log(abs(mean))
-            log_std = np.log(std)
+        if self.p_aux:
+            aux_values.append(np.log10(mad))
+            aux_values.append(delta_t)
 
-            aux = np.tile([log_abs_min, log_abs_max, log_abs_mean, log_std], (self.seq_len, 1))
-            X = np.concatenate((X, aux), axis=-1)
+            aux_values = np.tile(aux_values, (self.seq_len, 1))
+            X = np.concatenate((X, aux_values), axis=-1)
 
         # Convert X and mask from float64 to float32
         X = X.astype(np.float32)
@@ -154,12 +157,37 @@ class PSMDataset(Dataset):
         return X, mask
 
     def preprocess_spectra(self, spectra):
-        wavelengths, fluxes = spectra[:, 0], spectra[:, 1]
-        fluxes = np.interp(np.arange(3850, 9000, 2), wavelengths, fluxes)
-        fluxes = (fluxes - fluxes.mean()) / fluxes.std()
-        fluxes = fluxes.reshape(1, -1).astype(np.float32)
+        wavelengths = spectra[:, 0]
+        flux = spectra[:, 1]
+        flux_err = spectra[:, 2]
 
-        return fluxes
+        new_wavelengths = np.arange(3850, 9000, 2)
+        flux = np.interp(new_wavelengths, wavelengths, flux)
+        flux_err = np.interp(new_wavelengths, wavelengths, flux_err)
+
+        mean = np.mean(flux)
+
+        if self.s_mad:
+            std = stats.median_abs_deviation(flux[flux != 0])
+        else:
+            std = np.std(flux)
+
+        flux = (flux - mean) / std
+        spectra = [flux]
+
+        if self.s_err:
+            if self.s_err_norm:
+                flux_err = flux_err / std
+
+            spectra.append(flux_err)
+
+        if self.s_aux:
+            aux_values = np.full_like(flux, np.log10(std))
+            spectra.append(aux_values)
+
+        spectra = np.vstack(spectra).astype(np.float32)
+
+        return spectra
 
     def __len__(self):
         return len(self.df)
@@ -172,8 +200,8 @@ class PSMDataset(Dataset):
         spectra = self.readLRSFits(os.path.join(self.lamost_spec_dir, el['spec_filename']))
         metadata = el[self.meta_cols].values.astype(np.float32)
 
-        # "period" is metadata and is log and norm of "org_period" so we have to use the original period
-        photometry, photometry_mask = self.preprocess_lc(photometry, el['org_period'])
+        # "period" is metadata and is log and norm of "org_period" so we have to use the original period for folding
+        photometry, photometry_mask = self.preprocess_lc(photometry, el['org_period'], list(el[self.photo_cols]))
         spectra = self.preprocess_spectra(spectra)
 
         return photometry, photometry_mask, spectra, metadata, label
