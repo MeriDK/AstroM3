@@ -49,6 +49,7 @@ def get_model(config):
             weights = {k[len(weights_prefix) + 1:]: v for k, v in weights.items() if k.startswith(weights_prefix)}
 
         model.load_state_dict(weights, strict=False)
+        print('Loaded weights from {}'.format(config['use_pretrain']))
 
     return model
 
@@ -107,10 +108,10 @@ def set_random_seeds(random_seed):
 
 def get_config():
     config = {
-        'project': 'AstroCLIPOptuna3',
-        'mode': 'meta',    # 'clip' 'photo' 'spectra' 'meta' 'all'
-        'config_from': 'meridk/AstroCLIPOptuna3//0r838fa4',    # 'meridk/AstroCLIPResults/d2u52yml',
-        'random_seed': 12,  # 42, 66, 0, 12, 123
+        'project': 'AstroCLIPResults3',
+        'mode': 'spectra',    # 'clip' 'photo' 'spectra' 'meta' 'all'
+        'config_from': 'meridk/AstroCLIPOptuna3/atdo5ybp',    # 'meridk/AstroCLIPResults/d2u52yml',
+        'random_seed': 123,  # 42, 66, 0, 12, 123
         'use_wandb': True,
         'save_weights': True,
         'weights_path': f'/home/mariia/AstroML/weights/{datetime.now().strftime("%Y-%m-%d-%H-%M")}',
@@ -120,7 +121,7 @@ def get_config():
 
         # Data General
         'data_root': '/home/mariia/AstroML/data/asassn/',
-        'file': 'preprocessed_data/full_lb12/spectra_and_v',
+        'file': 'preprocessed_data/full_lb/spectra_and_v',
         'classes': CLASSES,
         'num_classes': len(CLASSES),
         'meta_cols': METADATA_COLS,
@@ -202,9 +203,14 @@ def get_config():
             if el in [
                 'p_dropout', 's_dropout', 'm_dropout', 'lr', 'beta1', 'weight_decay', 'epochs',
                 'early_stopping_patience', 'factor', 'patience', 'warmup', 'warmup_epochs', 'clip_grad', 'clip_value',
-                'use_pretrain', 'freeze', 'phased', 'p_aux', 's_aux', 's_err',
+                'use_pretrain', 'freeze', 'phased', 'p_aux', 's_aux', 's_err', 'file'
             ]:
                 config[el] = old_config[el]
+
+    if config['random_seed'] != 42:
+        file = config['file'].split('/')
+        # data splits saved in different folders depending on random seed
+        config['file'] = '/'.join(file[:-1]) + str(config['random_seed']) + '/' + file[-1]
 
     return config
 
