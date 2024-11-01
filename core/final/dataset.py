@@ -1,4 +1,5 @@
 import os
+import torch
 from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ class PSMDataset(Dataset):
         super(PSMDataset, self).__init__()
 
         self.split = split
+        self.mode = config['mode']
         self.data_root = config['data_root']
         self.df = pd.read_csv(os.path.join(self.data_root, f'{config["file"]}_{self.split}_norm.csv'))
         self.reader_v = ZipFile(os.path.join(self.data_root, config['v_zip']))
@@ -28,10 +30,12 @@ class PSMDataset(Dataset):
         self.seq_len = config['seq_len']
         self.phased = config['phased']
         self.p_aux = config['p_aux']
+        self.p_enc_in = config['p_enc_in']
         self.s_mad = config['s_mad']
         self.s_aux = config['s_aux']
         self.s_err = config['s_err']
         self.s_err_norm = config['s_err_norm']
+        self.s_enc_in = config['s_conv_channels'][0]
 
         self.random_seed = config['random_seed']
         np.random.seed(self.random_seed)
@@ -196,12 +200,20 @@ class PSMDataset(Dataset):
         el = self.df.iloc[idx]
         label = self.target2id[el['target']]
 
-        photometry = self.get_vlc(el['name'])
-        spectra = self.readLRSFits(os.path.join(self.lamost_spec_dir, el['spec_filename']))
-        metadata = el[self.meta_cols].values.astype(np.float32)
+        photometry = torch.zeros((self.seq_len, self.p_enc_in), dtype=torch.float32)
+        photometry_mask = torch.zeros(self.seq_len, dtype=torch.float32)
+        spectra = torch.zeros((self.s_enc_in, 2575), dtype=torch.float32)
+        metadata = torch.zeros(len(self.meta_cols), dtype=torch.float32)
 
-        # "period" is metadata and is log and norm of "org_period" so we have to use the original period for folding
-        photometry, photometry_mask = self.preprocess_lc(photometry, el['org_period'], list(el[self.photo_cols]))
-        spectra = self.preprocess_spectra(spectra)
+        if self.mode in ('photo', 'all', 'clip'):
+            photometry = self.get_vlc(el['name'])
+            photometry, photometry_mask = self.preprocess_lc(photometry, el['org_period'], list(el[self.photo_cols]))
+
+        if self.mode in ('spectra', 'all', 'clip'):
+            spectra = self.readLRSFits(os.path.join(self.lamost_spec_dir, el['spec_filename']))
+            spectra = self.preprocess_spectra(spectra)
+
+        if self.mode in ('meta', 'all', 'clip'):
+            metadata = el[self.meta_cols].values.astype(np.float32)
 
         return photometry, photometry_mask, spectra, metadata, label
