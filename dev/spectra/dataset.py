@@ -2,9 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 from astropy.io import fits
-from scipy import stats
 from torch.utils.data import Dataset
-from core.data.utils import readLRSFits, preprocess_spectra
+from dev.data.utils import readLRSFits, preprocess_spectra
 
 
 class SpectraVDataset(Dataset):

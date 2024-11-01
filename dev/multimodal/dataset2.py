@@ -4,7 +4,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 
 from util.parallelzipfile import ParallelZipFile as ZipFile
-from core.data.utils import preprocess_spectra, readLRSFits, preprocess_lc, get_vlc, add_noise, aug_metadata
+from dev.data.utils import preprocess_spectra, readLRSFits, preprocess_lc, get_vlc, add_noise, aug_metadata
 
 
 METADATA_COLS = [

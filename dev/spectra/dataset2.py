@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from core.multimodal.dataset2 import VPSMDatasetV2
+from dev.multimodal.dataset2 import VPSMDatasetV2
 
 
 class VPSMDatasetV2Spectra(Dataset):

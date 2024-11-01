@@ -8,8 +8,7 @@ from torch.utils.data import Dataset
 from scipy import stats
 
 from util.parallelzipfile import ParallelZipFile as ZipFile
-from core.data.utils import get_vlc, preprocess_lc
-from core.multimodal.dataset2 import VPSMDatasetV2
+from dev.multimodal.dataset2 import VPSMDatasetV2
 
 
 class VGDataset(Dataset):

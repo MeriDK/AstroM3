@@ -13,7 +13,7 @@ from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
 from pathlib import Path
-from core.photometry.dataset import collate_fn, ASASSNVarStarDataset
+from dev.photometry.dataset import collate_fn, ASASSNVarStarDataset
 from functools import partial
 import matplotlib.pyplot as plt
 

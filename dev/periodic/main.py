@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import TimeSeriesTransformerConfig, TimeSeriesTransformerForPrediction
 
-from core.periodic.dataset import MachoDataset
+from dev.periodic.dataset import MachoDataset
 from trainer import PredictionTrainer, ClassificationTrainer
 from model import ClassificationModel
 
