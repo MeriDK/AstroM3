@@ -1,93 +1,173 @@
-# AstroML
+# Self-supervised Multimodal Model for Astronomy
 
-## Setup
+![Model Overview](images/astroclip.png)
+*Figure 1: Overview of the multimodal CLIP framework adapted for astronomy, incorporating three data modalities: photometric time-series, spectra, and metadata. Each modality is processed by a dedicated encoder to create embeddings, which are then mapped into a shared embedding space through projection heads. Pairwise similarity matrices align the embeddings across modalities, and a symmetric cross-entropy loss, computed over these matrices, optimizes the model. The total loss, derived from all pairwise losses, guides the model’s trimodal learning.*
+
+
+## Requirements
 
 Before running the scripts, you need to install the required dependencies:
    ```sh
-   pip install -r requirements.txt
+   mamba env create -f environment.yml
    ```
+
+Set up WandB for experiment tracking:
+   ```sh
+   wandb login
+   ```
+
+Set up MySQL database if using Optuna's storage for hyperparameter tuning.
+
 
 ## Downloading the Data
 
-The folder _data_ contains scripts for downloading and processing the MACHO dataset as used in the Periodic Network 
-project. The original codebase can be found at [kmzzhang/periodicnetwork](https://github.com/kmzzhang/periodicnetwork), 
-which should be referenced for detailed data preprocessing steps.
+## Project Structure
 
-To obtain the dataset, execute the following commands in your terminal:
+The project is organized into several key files and modules, each responsible for a different part of the workflow.
 
-1. Go to the _data_ folder:
-   ```sh
-   cd data
-   
-2. Download the MACHO data by executing the shell script:
-   ```sh
-   sh download_macho.sh
+- **`dataset.py`**: Defines `PSMDataset`, a custom dataset class that handles data loading, filtering, and preprocessing for photometry, spectra, and metadata. 
 
-3. Run pre_processing file on the downloaded file:
-   ```sh
-   python preprocess_data.py
+- **`loss.py`**: Contains `CLIPLoss`, a custom loss function designed for multimodal alignment to align representations from different data types.
 
-## Training Time Series Transformer Model
+- **`main.py`**: The main script to train and evaluate the models. It sets up the configuration, loads data, initializes the model, and manages the training process.
 
-All the code is located in _ts-hf-periodic-refactor.ipynb_. It consists of four steps:
+- **`model.py`**: Defines the model architectures for each modality:
+  - `Informer` for photometric data,
+  - `GalSpecNet` for spectroscopic data,
+  - `MetaModel` for metadata, and
+  - `AstroModel` as the combined multimodal model.
 
-1. Creating custom dataset class MachoDataset, which uses the data that was just downloaded and pre-processed in the 
-previous steps. You should change _data_root_ path to the location where your data is located.
+- **`trainer.py`**: Manages the training and evaluation processes, including logging, early stopping, and metric tracking.
 
-2. Setting up code for pre-training time series transformer model on the prediction task. For more details about the
-model refer to hugging face [docs](https://huggingface.co/docs/transformers/v4.34.1/en/model_doc/time_series_transformer).
+- **`tune.py`**: Script for hyperparameter tuning using Optuna. This script explores different hyperparameter configurations to optimize model performance.
 
-3. Evaluation of the pre-trained model on the prediction task. It produces 2 metrics MASE and sMAPE that should be used
-for comparison of the pre-trained models.
+## Configuration Setup
 
-4. The next step defines Classification Model which is the pre-trained model from the previous steps plus a
-classification layer.
+The function `get_config()` in `main.py` provides a structured configuration for training and evaluating the model. It defines various parameters that control data paths, model architecture, and training behaviors. Adjusting these parameters allows for fine-tuning the model and adapting it to specific tasks. The configuration returned by `get_config()` is used throughout the training process to ensure consistency. If you want to change any parameter it should be changed here.
 
-5. Confusion matrix for the trained Classification Model.
+### How to Use `get_config()`
 
-## To-Do List
+1. **Basic Structure**: The configuration dictionary includes essential parameters, divided into sections for project settings, data loading, model architecture, and training hyperparameters.
 
-Step 1. Right Now (the goal is to achieve at least 90% accuracy):
-- [ ] Regenerate data with errors
-- [ ] Train the model with different prediction window lengths
-- [ ] Fine-tune hyperparameters for pre-training model
-- [ ] Fine-tune hyperparameters for the classification model
-- [ ] Add additional inputs into the model: aux, errors, aux + errors
+2. **Modifying Parameters**:
+   - Open `main.py` and locate the `get_config()` function.
+   - Modify the fields to suit your requirements.
 
-Step 2. After that (the goal is to set up training for variable length objects with at least the same 90% on the old 
-data and decent results on the new data):
-- [ ] Create new data of different lengths and corresponding masks
-- [ ] Check the current model's performance on the new data of different lengths
-- [ ] Train the model with the new data of different lengths
-- [ ] Check the average performance on all data
-- [ ] Check the new models' performance on the new data of different lengths
+3. **Key Parameters**:
+   - **Project Settings**:
+     - `'project'`: Name of the project in WandB (e.g., `'AstroCLIPResults3'`).
+     - `'mode'`: Specifies which modality is used (e.g., `'spectra'` for spectra classification, `'photo` for photometry classification, `'meta'` for metadata classification, `'clip'` for CLIP pre-training using all three modalities, `'all'` for classification using photometry, spectra and metadata).
+     - `'random_seed'`: Sets a fixed random seed for reproducibility.
+     - `'use_wandb'`: Enable or disable WandB for tracking (True/False).
+     - `'save_weights'`: Enable or disable saving weights
+     - `'use_pretrain'`: If you want to use pre-trained model, specify the path to the weights here
 
-Step 3. After that (at the same time?) (the goal is to set up training for the new modality (spectra) and show better
-general performance with all 3 modalities combined than on each separately):
-- [ ] Generate the data only with all 3 modalities
-- [ ] Set up training for Multimodal proposal sample data
-- [ ] Get baseline results with some RNN model (LSTM?)
-- [ ] Get baseline results on aux data
-- [ ] Get baseline results on spectra
-- [ ] Get the results for Time Series Transformer model with: flux, flux + aux
-- [ ] Set up training for the multi-modal data flux + aux + spectra
+   - **Data Settings**:
+     - `'data_root'`: Directory path to your data.
+     - `'file'`: Base name of the file used for loading datasets.
+     - `'classes'`: List of class labels in your dataset which you want to use.
+     - `'meta_cols'`, `'photo_cols'`: Columns for metadata and photometry features.
+     - `'min_samples'`, `'max_samples'`: Set minimum and maximum sample count per class.
 
-Step 4. Missing modalities (the goal is to set up training for the missing modalities, it's supposed to show the same
-results for the data with all modalities and decent results for objects with missing modalities):
-- [ ] Add objects with missing modalities creating a new dataset
-- [ ] Set up training for the multi-modal data flux + aux + spectra with missing modalities
-- [ ] Check the performance on the data with all modalities
-- [ ] Check the performance on the data with missing modalities
+   - **Model Architecture**:
+     - **Photometry Model**:
+       - `'p_enc_in'`, `'p_d_model'`, `'p_dropout'`, `'p_n_heads'`: Parameters for the photometry model architecture.
+     - **Spectra Model**:
+       - `'s_conv_channels'`, `'s_dropout'`: Convolutional channels and dropout settings.
+     - **Metadata Model**:
+       - `'m_hidden_dim'`, `'m_dropout'`: Hidden layer dimension and dropout settings for metadata.
+     - **Multimodal Fusion**:
+       - `'fusion'`: Specifies the fusion strategy (e.g., `'avg'`, `'concat'`).
 
-Step 5. Transfer everything to our real world data.
+   - **Training Hyperparameters**:
+     - `'batch_size'`, `'lr'`, `'epochs'`: Basic training settings.
+     - `'scheduler'`: Learning rate scheduler type (e.g., `'ExponentialLR'`, `'ReduceLROnPlateau'`).
+     - `'early_stopping_patience'`: Epochs to wait before early stopping if validation loss doesn’t improve.
 
-Optionally:
-- [ ] Add scripts for loading ASAS-SN and OGLE-III
-- [ ] Repeat the experiments from Step 1 and Step 2 with ASAS-SN and OGLE-III
+### Example of Custom Configuration
 
-Other tasks:
-- [ ] Move everyting from jupyter notebooks to python files
-- [ ] Add weights \& biases
-- [ ] Add learning rate scheduler
+Here’s a minimal sample configuration setup (you'll probably need to set more parameters):
 
+```python
+config = {
+    'project': 'MyAstroProject',
+    'mode': 'all',
+    'random_seed': 42,
+    'use_wandb': True,
+    'data_root': '/path/to/data/',
+    'file': 'preprocessed_data/dataset_name',
+    'classes': ['EW', 'SR', 'EA', 'RRAB'],
+    'meta_cols': ['mean_vmag', 'phot_g_mean_mag'],
+    'photo_cols': ['amplitude', 'period'],
+    'p_d_model': 128,
+    'p_dropout': 0.2,
+    'batch_size': 256,
+    'lr': 0.001,
+    'epochs': 50,
+    'scheduler': 'ReduceLROnPlateau',
+    'fusion': 'avg'
+}
+```
 
+### Using Previous Configuration as a Template
+
+If you want to copy parameters from a previous WandB run, you can set the `'config_from'` field to the specific WandB run path:
+
+```python
+'config_from': 'username/projectname/run_id'
+```
+
+This configuration setup allows you to copy specific parameters from a previous WandB run and overwrite them in the current configuration. Only the parameters listed below will be copied:
+   - Dropout settings:
+     - `p_dropout`: Photometry model dropout rate
+     - `s_dropout`: Spectra model dropout rate
+     - `m_dropout`: Metadata model dropout rate
+   - Learning and optimization settings:
+     - `lr`: Learning rate
+     - `beta1`: Beta1 for Adam optimizer
+     - `weight_decay`: Weight decay for optimizer
+     - `epochs`: Total number of training epochs
+   - Early stopping and scheduler:
+     - `early_stopping_patience`: Patience for early stopping
+     - `factor`: Factor by which the learning rate is reduced
+     - `patience`: Patience for learning rate scheduler
+     - `warmup`: Enable warmup
+     - `warmup_epochs`: Number of warmup epochs
+   - Gradient clipping:
+     - `clip_grad`: Enable gradient clipping
+     - `clip_value`: Clip value for gradients
+   - Pre-training and data handling:
+     - `use_pretrain`: Path to pre-trained weights
+     - `freeze`: Whether to freeze model layers during training
+     - `phased`: Flag to enable phased data processing
+     - `p_aux`, `s_aux`, `s_err`: Auxiliary flags for data processing
+     - `file`: Path to the dataset file
+
+It's a very useful feature, especially when you're doing a lot of tuning, as these are the parameters that frequently change. It also significantly improves reproducibility.
+
+## Training 
+
+After setting all the configuration, to train the model simply run:
+```sh
+python main.py
+```
+
+[Optional] You might need to modify python path:
+```sh
+export PYTHONPATH=$PYTHONPATH:/<root_dir>/
+```
+instead of `<root_dir>` use the full path to this repo.
+
+## Tuning
+
+For hyperparameter optimization using Optuna:
+```sh
+python tune.py
+```
+The `tune.py` script sets up an Optuna study and performs hyperparameter tuning based on the specified search space. But in a nutshell it does the same thing as `main.py`.
+
+## Citation
+If you find this repo useful, please cite our paper.
+```
+
+```
