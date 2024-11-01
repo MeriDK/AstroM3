@@ -184,10 +184,17 @@ def get_config(trial):
     else:
         raise NotImplementedError(f"Unknown study name {STUDY_NAME}")
 
-    if STUDY_NAME in ('metaclip', 'photoclip', 'spectraclip', 'psmclip'):
+    if 'clip' in STUDY_NAME and STUDY_NAME != 'clip':    # ('metaclip', 'photoclip', 'spectraclip', 'psmclip')
         config['use_pretrain'] = 'CLIP/home/mariia/AstroML/weights/2024-09-12-13-21-03ai5zsz/weights-best.pth'
     else:
         config['use_pretrain'] = None
+
+    if STUDY_NAME.endswith('10'):
+        config['file'] = 'preprocessed_data/sub10_lb/spectra_and_v'
+    elif STUDY_NAME.endswith('25'):
+        config['file'] = 'preprocessed_data/sub25_lb/spectra_and_v'
+    elif STUDY_NAME.endswith('50'):
+        config['file'] = 'preprocessed_data/sub50_lb/spectra_and_v'
 
     if config['p_aux']:
         config['p_enc_in'] += len(config['photo_cols']) + 2     # +2 for mad and delta t
@@ -269,18 +276,8 @@ def objective(trial):
 
 
 if __name__ == '__main__':
-    STUDY_NAME = 'spectraclip'
-    server = 'lbl'
-
-    # no socket - lbl2, socket 2 - lbl3, socket 3 - lbl
-    if server == 'lbl':
-        socket = '?unix_socket=/global/home/users/mariia/mysql/mysql3.sock'
-    elif server == 'lbl2':
-        socket = ''
-    else:
-        socket = '?unix_socket=/global/home/users/mariia/mysql/mysql2.sock'
-
-    storage = f'mysql://root:qwerty123@localhost/{STUDY_NAME}{socket}'
+    STUDY_NAME = 'spectra50'
+    storage = f'mysql://root@localhost/{STUDY_NAME}'
 
     try:
         study = optuna.create_study(study_name=STUDY_NAME, storage=storage, direction='minimize',

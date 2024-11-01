@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from models.Informer import DataEmbedding, EncoderLayer, AttentionLayer, ProbAttention, Encoder
 
@@ -169,6 +168,7 @@ class AstroModel(nn.Module):
         p_emb, s_emb, m_emb = self.get_embeddings(photometry, photometry_mask, spectra, metadata)
 
         if self.classification:
+
             if self.fusion == 'concat':
                 emb = torch.cat((p_emb, s_emb, m_emb), dim=1)
             elif self.fusion == 'avg':
