@@ -21,9 +21,18 @@ Set up MySQL database if using Optuna's storage for hyperparameter tuning.
 
 ## Downloading the Data
 
+## This Repo Structure:
+This repository includes the following folders:
+- `core/`: Contains all the essential code.
+- `dev/`: Holds outdated code that may not work but could serve as a useful reference.
+- `models/`: Contains code for key Informer blocks.
+- `notebooks/`: Contains various notebooks, though some may no longer function—use for reference only.
+- `util/`: Includes an early stopping class and utility functions for parallel zip processing and data handling.
+
 ## Project Structure
 
-The project is organized into several key files and modules, each responsible for a different part of the workflow.
+
+The `core/` folder is organized into several key files and modules, each responsible for a different part of the workflow.
 
 - **`dataset.py`**: Defines `PSMDataset`, a custom dataset class that handles data loading, filtering, and preprocessing for photometry, spectra, and metadata. 
 
