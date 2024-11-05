@@ -11,7 +11,7 @@ import optuna
 from optuna.exceptions import DuplicatedStudyError
 
 from dataset import PSMDataset
-from model import Informer, GalSpecNet, MetaModel, AstroModel
+from model import Informer, GalSpecNet, MetaModel, AstroM3
 from loss import CLIPLoss
 from trainer import Trainer
 
@@ -34,7 +34,7 @@ def get_model(config):
     elif config['mode'] == 'meta':
         model = MetaModel(config)
     else:
-        model = AstroModel(config)
+        model = AstroM3(config)
 
     if config['use_pretrain'] and config['use_pretrain'].startswith('CLIP'):
         weights = torch.load(config['use_pretrain'][4:], weights_only=True)

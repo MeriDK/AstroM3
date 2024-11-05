@@ -129,9 +129,9 @@ class MetaModel(nn.Module):
         return x
 
 
-class AstroModel(nn.Module):
+class AstroM3(nn.Module):
     def __init__(self, config):
-        super(AstroModel, self).__init__()
+        super(AstroM3, self).__init__()
 
         self.classification = True if config['mode'] == 'all' else False
 

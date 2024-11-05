@@ -1,4 +1,4 @@
-# Self-supervised Multimodal Model for Astronomy
+# AstroM<sup>3</sup>: A self-supervised multimodal model for astronomy
 
 ![Model Overview](images/astroclip.png)
 *Figure 1: Overview of the multimodal CLIP framework adapted for astronomy, incorporating three data modalities: photometric time-series, spectra, and metadata. Each modality is processed by a dedicated encoder to create embeddings, which are then mapped into a shared embedding space through projection heads. Pairwise similarity matrices align the embeddings across modalities, and a symmetric cross-entropy loss, computed over these matrices, optimizes the model. The total loss, derived from all pairwise losses, guides the model’s trimodal learning.*
@@ -44,7 +44,7 @@ The `core/` folder is organized into several key files and modules, each respons
   - `Informer` for photometric data,
   - `GalSpecNet` for spectroscopic data,
   - `MetaModel` for metadata, and
-  - `AstroModel` as the combined multimodal model.
+  - `AstroM3` as the combined multimodal model.
 
 - **`trainer.py`**: Manages the training and evaluation processes, including logging, early stopping, and metric tracking.
 
@@ -122,7 +122,7 @@ config = {
 
 If you want to copy parameters from a previous WandB run, you can set the `'config_from'` field to the specific WandB run path:
 
-```python
+```
 'config_from': 'username/projectname/run_id'
 ```
 
