@@ -1,0 +1,57 @@
+# Wandb settings
+project: 'AstroM3'
+use_wandb: True
+
+# Dataset settings
+dataset: 'MeriDK/AstroM3Dataset'
+classes: ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
+num_classes: 10
+seq_len: 200
+mode: 'clip'
+data_sub: 'full'
+
+# AstroM3 model parameters
+hidden_dim: 512
+fusion: 'avg'
+
+# Photometry model parameters
+p_enc_in: 9
+p_d_model: 128
+p_dropout: 0.24510711541869523
+p_factor: 1
+p_output_attention: False
+p_n_heads: 4
+p_d_ff: 512
+p_activation: 'gelu'
+p_e_layers: 8
+
+# Spectra model parameters
+s_dropout: 0.33926589273352475
+s_conv_channels: [3, 64, 64, 32, 32]
+s_kernel_size: 3
+s_mp_kernel_size: 4
+
+# Metadata model parameters
+m_input_dim: 34
+m_hidden_dim: 512
+m_dropout: 0.1595340013391597
+
+# Training settings
+use_pretrain: null
+epochs: 100
+batch_size: 512
+lr: 0.0039210319036872545
+beta1: 0.9261921550228268
+beta2: 0.999
+weight_decay: 0.004670071421955371
+early_stopping_patience: 6
+clip_grad: True
+clip_value: 45
+save_weights: True
+weights_path: './weights/'
+
+# Scheduler settings
+scheduler: 'ReduceLROnPlateau'
+scheduler_factor: 0.1125080808385063
+scheduler_patience: 3
+warmup_epochs: 10

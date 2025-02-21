@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import wandb
 import os
-from util.early_stopping import EarlyStopping
+from dev.util import EarlyStopping
 
 
 class CLIPTrainer:

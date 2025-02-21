@@ -6,7 +6,7 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import wandb
 import os
-from util.early_stopping import EarlyStopping
+from dev.util import EarlyStopping
 
 
 class ClassificationTrainer:

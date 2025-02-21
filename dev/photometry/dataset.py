@@ -12,8 +12,8 @@ from astropy.io import fits
 import torch
 from torch.utils.data import Dataset
 
-from util.parallelzipfile import ParallelZipFile as ZipFile
-from util.preprocess_data import clip_outliers
+from dev.util import ParallelZipFile as ZipFile
+from dev.util import clip_outliers
 
 pd.options.mode.chained_assignment = None
 logging.captureWarnings(True)

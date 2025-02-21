@@ -9,8 +9,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset
 
-from util.parallelzipfile import ParallelZipFile as ZipFile
-from util.preprocess_data import clip_outliers
+from dev.util import ParallelZipFile as ZipFile
+from dev.util import clip_outliers
 
 
 METADATA_COLS = [

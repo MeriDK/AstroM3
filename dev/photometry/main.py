@@ -17,7 +17,7 @@ from trainer import ClassificationTrainer
 from model import ClassificationModel
 from dataset import ASASSNVarStarDataset, collate_fn
 from dataset2 import VGDataset, VPSMDatasetV2Photo
-from models.Informer import Informer
+from dev.models.Informer import Informer
 
 
 # Classes from ASAS-SN paper. Except for L, GCAS, YSO, GCAS: and VAR

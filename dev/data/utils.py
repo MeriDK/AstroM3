@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from astropy.io import fits
-from util.preprocess_data import clip_outliers
+from dev.util import clip_outliers
 from scipy import stats
 from io import BytesIO
 

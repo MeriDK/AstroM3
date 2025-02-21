@@ -9,7 +9,7 @@ import wandb
 import os
 import json
 from scipy import stats
-from util.early_stopping import EarlyStopping
+from dev.util import EarlyStopping
 
 
 class ClassificationTrainer:

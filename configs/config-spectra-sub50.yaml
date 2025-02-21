@@ -1,0 +1,37 @@
+# Wandb settings
+project: 'AstroM3'
+use_wandb: True
+
+# Dataset settings
+dataset: 'MeriDK/AstroM3Dataset'
+classes: ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
+num_classes: 10
+seq_len: 200
+mode: 'spectra'
+data_sub: 'sub50'
+
+# Spectra model parameters
+s_dropout: 0.2150546816155032
+s_conv_channels: [3, 64, 64, 32, 32]
+s_kernel_size: 3
+s_mp_kernel_size: 4
+
+# Training settings
+use_pretrain: null
+epochs: 50
+batch_size: 512
+lr: 0.009108121363693778
+beta1: 0.9017578625564971
+beta2: 0.999
+weight_decay: 0.00040105661758006
+early_stopping_patience: 6
+clip_grad: True
+clip_value: 5
+save_weights: True
+weights_path: './weights/'
+
+# Scheduler settings
+scheduler: 'ReduceLROnPlateau'
+scheduler_factor: 0.8188233456609151
+scheduler_patience: 3
+warmup_epochs: 10

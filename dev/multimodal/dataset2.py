@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 
-from util.parallelzipfile import ParallelZipFile as ZipFile
+from dev.util import ParallelZipFile as ZipFile
 from dev.data.utils import preprocess_spectra, readLRSFits, preprocess_lc, get_vlc, add_noise, aug_metadata
 
 

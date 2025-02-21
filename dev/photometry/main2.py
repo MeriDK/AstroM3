@@ -11,7 +11,7 @@ from datetime import datetime
 
 from dataset2 import VPSMDatasetV2Photo
 from trainer import ClassificationTrainer
-from models.Informer import Informer
+from dev.models.Informer import Informer
 
 CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 

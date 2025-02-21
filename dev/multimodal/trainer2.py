@@ -6,7 +6,7 @@ from sklearn.metrics import confusion_matrix
 from tqdm import tqdm
 import wandb
 import os
-from util.early_stopping import EarlyStopping
+from dev.util import EarlyStopping
 
 
 class ClassificationTrainer:

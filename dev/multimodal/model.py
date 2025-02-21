@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.Informer import DataEmbedding, EncoderLayer, AttentionLayer, ProbAttention, Encoder
+from dev.models.Informer import DataEmbedding, EncoderLayer, AttentionLayer, ProbAttention, Encoder
 
 
 class Informer(nn.Module):
