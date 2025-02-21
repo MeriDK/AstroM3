@@ -170,11 +170,13 @@ Training a model on metadata without CLIP pre-training using the full dataset:
 python src/main.py --config configs/config-meta-full.yaml
 ```
 
-**Note:** Since subdatasets are sampled from predefined train/val/test splits, CLIP models must be pre-trained and fine-tuned using the same random seed to maintain data consistency.  
+**Note 1:** Since subdatasets are sampled from predefined train/val/test splits, CLIP models must be pre-trained and fine-tuned using the same random seed to maintain data consistency.  
 
 For example:  
 ✅ Pre-training on the full dataset with random seed `66` and fine-tuning on a 25% subset with the same seed `66` ensures proper data separation.  
 ❌ Pre-training on the full dataset with random seed `123` and fine-tuning on a 25% subset with seed `66` will cause data leakage, as some training samples from pre-train will end up in the validation or test set in fine-tune.
+
+**Note 2:** After pre-training the CLIP models, update the paths in `CLIP_WEIGHTS` (located at the top of `main.py`) to the correct local directories on your machine. Otherwise, the weights will be downloaded from Hugging Face.
 
 ---
 
