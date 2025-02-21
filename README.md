@@ -93,31 +93,6 @@ The function `get_config()` in `main.py` provides a structured configuration for
      - `'scheduler'`: Learning rate scheduler type (e.g., `'ExponentialLR'`, `'ReduceLROnPlateau'`).
      - `'early_stopping_patience'`: Epochs to wait before early stopping if validation loss doesn’t improve.
 
-### Example of Custom Configuration
-
-Here’s a minimal sample configuration setup (you'll probably need to set more parameters):
-
-```python
-config = {
-    'project': 'MyAstroProject',
-    'mode': 'all',
-    'random_seed': 42,
-    'use_wandb': True,
-    'data_root': '/path/to/data/',
-    'file': 'preprocessed_data/dataset_name',
-    'classes': ['EW', 'SR', 'EA', 'RRAB'],
-    'meta_cols': ['mean_vmag', 'phot_g_mean_mag'],
-    'photo_cols': ['amplitude', 'period'],
-    'p_d_model': 128,
-    'p_dropout': 0.2,
-    'batch_size': 256,
-    'lr': 0.001,
-    'epochs': 50,
-    'scheduler': 'ReduceLROnPlateau',
-    'fusion': 'avg'
-}
-```
-
 ### Using Previous Configuration as a Template
 
 If you want to copy parameters from a previous WandB run, you can set the `'config_from'` field to the specific WandB run path:
@@ -178,5 +153,9 @@ The `tune.py` script sets up an Optuna study and performs hyperparameter tuning 
 ## Citation
 If you find this repo useful, please cite our paper.
 ```
-
+@inproceedings{rizhko2024self,
+  title={Self-supervised Multimodal Model for Astronomy},
+  author={Rizhko, Mariia and Bloom, Joshua S},
+  booktitle={Neurips 2024 Workshop Foundation Models for Science: Progress, Opportunities, and Challenges}
+}
 ```
