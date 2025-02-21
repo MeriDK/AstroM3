@@ -18,7 +18,7 @@ source venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-Login to Weights & Biases (Optional)
+Login to Weights & Biases
 ```sh
 wandb login
 ```
