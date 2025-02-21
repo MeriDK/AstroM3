@@ -3,159 +3,182 @@
 ![Model Overview](images/astroclip.png)
 *Figure 1: Overview of the multimodal CLIP framework adapted for astronomy, incorporating three data modalities: photometric time-series, spectra, and metadata. Each modality is processed by a dedicated encoder to create embeddings, which are then mapped into a shared embedding space through projection heads. Pairwise similarity matrices align the embeddings across modalities, and a symmetric cross-entropy loss, computed over these matrices, optimizes the model. The total loss, derived from all pairwise losses, guides the model’s trimodal learning.*
 
+## Setup
 
-## Requirements
+First, clone the repository and navigate to its directory:
+```sh
+git clone https://github.com/MeriDK/AstroM3.git
+cd AstroM3
+```
 
-Before running the scripts, you need to install the required dependencies:
-   ```sh
-   mamba env create -f environment.yml
-   ```
+Create a virtual environment (tested with Python 3.10.14), then install the required dependencies:
+```sh
+uv venv venv --python 3.10.14
+source venv/bin/activate
+uv pip install -r requirements.txt
+```
 
-Set up WandB for experiment tracking:
-   ```sh
-   wandb login
-   ```
+Login to Weights & Biases (Optional)
+```sh
+wandb login
+```
+---
 
-Set up MySQL database if using Optuna's storage for hyperparameter tuning.
+## Data
 
+AstroM3Dataset is a multimodal time-series astronomy dataset for variable star classification. It includes photometry, spectra, and metadata features and is available in two formats on Hugging Face Datasets:
 
-## Downloading the Data
+1. MeriDK/AstroM3Dataset - Original data using a custom loading script.
+2. MeriDK/AstroM3Processed - Preprocessed version in Parquet and Hugging Face format for faster loading.
 
-## This Repo Structure:
-This repository includes the following folders:
-- `core/`: Contains all the essential code.
-- `dev/`: Holds outdated code that may not work but could serve as a useful reference.
-- `models/`: Contains code for key Informer blocks.
-- `notebooks/`: Contains various notebooks, though some may no longer function—use for reference only.
-- `util/`: Includes an early stopping class and utility functions for parallel zip processing and data handling.
+The dataset is automatically downloaded during training, so no manual loading is required.
+
+Each sample consists of:
+
+- Photometry: Light curve data `(N, 3)` (time, flux, flux error).
+- Spectra: Spectral observations `(M, 3)` (wavelength, flux, flux error).
+- Metadata:
+  - `meta_cols`: Dictionary of metadata feature names and values.
+  - `photo_cols`: Dictionary of photometric feature names and values.
+- Label: Class name.
+
+### 1. MeriDK/AstroM3Dataset
+
+This version retains the raw dataset structure and uses a custom loading script. It offers:
+
+- Efficient storage by reusing files across different subsets and seeds.
+- Suitable for exploratory data analysis (EDA) of original files.
+- A longer initial load time as Hugging Face processes the dataset.
+
+Loading:
+```python
+from datasets import load_dataset
+dataset = load_dataset("MeriDK/AstroM3Dataset", trust_remote_code=True)
+```
+
+To load specific subsets and seeds:
+```python
+dataset = load_dataset("MeriDK/AstroM3Dataset", name="full_42", trust_remote_code=True)
+```
+
+To load objects with preprocessed and normalized metadata:
+```python
+dataset = load_dataset("MeriDK/AstroM3Dataset", name="full_42_norm", trust_remote_code=True)
+```
+
+More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Dataset)
+
+### 2. MeriDK/AstroM3Processed
+
+This version contains the same data but converted into Parquet for faster access.
+
+- **Pros**: Fast loading times.
+- **Cons**: Less space-efficient due to duplicated files across subsets and seeds.
+- **Usage**: Used for model training.
+
+Loading follows the same process but does not require `trust_remote_code=True`. Specify the configuration using the format `{sub}_{random_seed}{norm}`.
+
+- **Subset options**: `full`, `sub50`, `sub25`, `sub10`
+- **Random seeds**: `42`, `0`, `66`, `12`, `123`
+- **Normalization**: `""` (default) or `"_norm"`
+
+Example:
+```python
+from datasets import load_dataset
+dataset = load_dataset("MeriDK/AstroM3Processed", name="full_42_norm")
+```
+
+More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Processed)
+
+---
 
 ## Project Structure
-
-
-The `core/` folder is organized into several key files and modules, each responsible for a different part of the workflow.
-
-- **`dataset.py`**: Defines `PSMDataset`, a custom dataset class that handles data loading, filtering, and preprocessing for photometry, spectra, and metadata. 
-
-- **`loss.py`**: Contains `CLIPLoss`, a custom loss function designed for multimodal alignment to align representations from different data types.
-
-- **`main.py`**: The main script to train and evaluate the models. It sets up the configuration, loads data, initializes the model, and manages the training process.
-
-- **`model.py`**: Defines the model architectures for each modality:
-  - `Informer` for photometric data,
-  - `GalSpecNet` for spectroscopic data,
-  - `MetaModel` for metadata, and
-  - `AstroM3` as the combined multimodal model.
-
-- **`trainer.py`**: Manages the training and evaluation processes, including logging, early stopping, and metric tracking.
-
-- **`tune.py`**: Script for hyperparameter tuning using Optuna. This script explores different hyperparameter configurations to optimize model performance.
-
-## Configuration Setup
-
-The function `get_config()` in `main.py` provides a structured configuration for training and evaluating the model. It defines various parameters that control data paths, model architecture, and training behaviors. Adjusting these parameters allows for fine-tuning the model and adapting it to specific tasks. The configuration returned by `get_config()` is used throughout the training process to ensure consistency. If you want to change any parameter it should be changed here.
-
-### How to Use `get_config()`
-
-1. **Basic Structure**: The configuration dictionary includes essential parameters, divided into sections for project settings, data loading, model architecture, and training hyperparameters.
-
-2. **Modifying Parameters**:
-   - Open `main.py` and locate the `get_config()` function.
-   - Modify the fields to suit your requirements.
-
-3. **Key Parameters**:
-   - **Project Settings**:
-     - `'project'`: Name of the project in WandB (e.g., `'AstroCLIPResults3'`).
-     - `'mode'`: Specifies which modality is used (e.g., `'spectra'` for spectra classification, `'photo` for photometry classification, `'meta'` for metadata classification, `'clip'` for CLIP pre-training using all three modalities, `'all'` for classification using photometry, spectra and metadata).
-     - `'random_seed'`: Sets a fixed random seed for reproducibility.
-     - `'use_wandb'`: Enable or disable WandB for tracking (True/False).
-     - `'save_weights'`: Enable or disable saving weights
-     - `'use_pretrain'`: If you want to use pre-trained model, specify the path to the weights here
-
-   - **Data Settings**:
-     - `'data_root'`: Directory path to your data.
-     - `'file'`: Base name of the file used for loading datasets.
-     - `'classes'`: List of class labels in your dataset which you want to use.
-     - `'meta_cols'`, `'photo_cols'`: Columns for metadata and photometry features.
-     - `'min_samples'`, `'max_samples'`: Set minimum and maximum sample count per class.
-
-   - **Model Architecture**:
-     - **Photometry Model**:
-       - `'p_enc_in'`, `'p_d_model'`, `'p_dropout'`, `'p_n_heads'`: Parameters for the photometry model architecture.
-     - **Spectra Model**:
-       - `'s_conv_channels'`, `'s_dropout'`: Convolutional channels and dropout settings.
-     - **Metadata Model**:
-       - `'m_hidden_dim'`, `'m_dropout'`: Hidden layer dimension and dropout settings for metadata.
-     - **Multimodal Fusion**:
-       - `'fusion'`: Specifies the fusion strategy (e.g., `'avg'`, `'concat'`).
-
-   - **Training Hyperparameters**:
-     - `'batch_size'`, `'lr'`, `'epochs'`: Basic training settings.
-     - `'scheduler'`: Learning rate scheduler type (e.g., `'ExponentialLR'`, `'ReduceLROnPlateau'`).
-     - `'early_stopping_patience'`: Epochs to wait before early stopping if validation loss doesn’t improve.
-
-### Using Previous Configuration as a Template
-
-If you want to copy parameters from a previous WandB run, you can set the `'config_from'` field to the specific WandB run path:
-
 ```
-'config_from': 'username/projectname/run_id'
+AstroM3/
+├── src/
+│   ├── dataset.py             # Custom PyTorch dataset that processes photometry, spectra, and metadata.
+│   ├── informer.py            # Includes the Informer layers
+│   ├── loss.py                # Defines `CLIPLoss` for multimodal contrastive learning
+│   ├── main.py                # Loads configs and setups training
+│   ├── model.py               # Defines photometry (Informer), spectra (GalSpecNet), metadata (MetaModel), and multi modal (AstroM3) models
+│   ├── trainer.py             # Handles training and evaluation
+│   ├── utils.py               # Utility functions for model initialization, schedulers, and seed setting
+├── configs/                    
+│   ├── config-clip-full.yaml
+│   ├── config-meta-full.yaml
+│   ├── config-meta-full-clip.yaml
+│   ├── config-meta-sub50.yaml
+│   ├── config-meta-sub50-clip.yaml
+│   ├── ...
+│   ├── config-spectra-full.yaml
+│   ├── config-spectra-full-clip.yaml
+│   ├── ...
+│   ├── config-photo-full.yaml
+│   ├── ...
+│   ├── config-all-full.yaml
+│   ├── ...
 ```
 
-This configuration setup allows you to copy specific parameters from a previous WandB run and overwrite them in the current configuration. Only the parameters listed below will be copied:
-   - Dropout settings:
-     - `p_dropout`: Photometry model dropout rate
-     - `s_dropout`: Spectra model dropout rate
-     - `m_dropout`: Metadata model dropout rate
-   - Learning and optimization settings:
-     - `lr`: Learning rate
-     - `beta1`: Beta1 for Adam optimizer
-     - `weight_decay`: Weight decay for optimizer
-     - `epochs`: Total number of training epochs
-   - Early stopping and scheduler:
-     - `early_stopping_patience`: Patience for early stopping
-     - `factor`: Factor by which the learning rate is reduced
-     - `patience`: Patience for learning rate scheduler
-     - `warmup`: Enable warmup
-     - `warmup_epochs`: Number of warmup epochs
-   - Gradient clipping:
-     - `clip_grad`: Enable gradient clipping
-     - `clip_value`: Clip value for gradients
-   - Pre-training and data handling:
-     - `use_pretrain`: Path to pre-trained weights
-     - `freeze`: Whether to freeze model layers during training
-     - `phased`: Flag to enable phased data processing
-     - `p_aux`, `s_aux`, `s_err`: Auxiliary flags for data processing
-     - `file`: Path to the dataset file
+#### Configurations
+The `configs/` directory contains YAML configuration files structured as:
+```
+config-{mode}-{sub}{clip}.yaml
+```
+Where:
+- **`mode`**: Defines the model type:
+  - `clip` - Pre-training using contrastive learning.
+  - `meta` - Metadata-only classification.
+  - `spectra` - Spectra-only classification.
+  - `photo` - Photometry-only classification.
+  - `all` - Multimodal classification.
+- **`sub`**: Defines the dataset size:
+  - `full` - Full dataset.
+  - `sub50` - 50% subset.
+  - `sub25` - 25% subset.
+  - `sub10` - 10% subset.
+- **`clip`**: If present, the model is initialized with CLIP pre-training (`-clip`).
 
-It's a very useful feature, especially when you're doing a lot of tuning, as these are the parameters that frequently change. It also significantly improves reproducibility.
+For example:
+- `config-meta-full.yaml` - Metadata-only classification on the full dataset.
+- `config-spectra-sub50-clip.yaml` - Spectra-only classification on a 50% subset using CLIP pre-training.
+- `config-all-full.yaml` - Multimodal classification on the full dataset.
 
-## Training 
+---
 
-After setting all the configuration, to train the model simply run:
+## Training and Fine-Tuning
+
+To train or fine-tune a model, select the appropriate configuration file.
+
+Training the CLIP model:
 ```sh
-python main.py
+python src/main.py --config configs/config-clip-full.yaml
 ```
 
-[Optional] You might need to modify python path:
+Fine-tuning the CLIP model on a 25% subset of spectra:
 ```sh
-export PYTHONPATH=$PYTHONPATH:/<root_dir>/
+python src/main.py --config configs/config-spectra-sub25-clip.yaml
 ```
-instead of `<root_dir>` use the full path to this repo.
 
-## Tuning
-
-For hyperparameter optimization using Optuna:
+Fine-tuning the CLIP model on a 10% subset of multimodal classification data with a specific random seed:
 ```sh
-python tune.py
+python src/main.py --config configs/config-all-sub10-clip.yaml --random-seed 123
 ```
-The `tune.py` script sets up an Optuna study and performs hyperparameter tuning based on the specified search space. But in a nutshell it does the same thing as `main.py`.
+- The `--random-seed` argument (default: 42, possible options: 42, 0, 66, 12, 123) controls data splitting and initialization for reproducibility.
+
+Training a model on metadata without CLIP pre-training using the full dataset:
+```sh
+python src/main.py --config configs/config-meta-full.yaml
+```
+
+---
 
 ## Citation
-If you find this repo useful, please cite our paper.
+If you find this repo or data useful, please cite our paper 🤗
 ```
-@inproceedings{rizhko2024self,
-  title={Self-supervised Multimodal Model for Astronomy},
+@article{rizhko2024astrom,
+  title={AstroM $\^{} 3$: A self-supervised multimodal model for astronomy},
   author={Rizhko, Mariia and Bloom, Joshua S},
-  booktitle={Neurips 2024 Workshop Foundation Models for Science: Progress, Opportunities, and Challenges}
+  journal={arXiv preprint arXiv:2411.08842},
+  year={2024}
 }
 ```
