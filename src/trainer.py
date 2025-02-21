@@ -7,13 +7,12 @@ from sklearn.metrics import confusion_matrix
 from tqdm import tqdm
 import wandb
 import os
-import optuna
 
 from utils import EarlyStopping
 
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, warmup_scheduler, criterion, device, config, trial=None):
+    def __init__(self, model, optimizer, scheduler, warmup_scheduler, criterion, device, config):
         """
         Trainer class for handling model training, validation, and evaluation.
 
@@ -25,7 +24,6 @@ class Trainer:
             criterion (torch.nn.Module): Loss function.
             device (torch.device): Device (CPU/GPU).
             config (dict): Training configuration dictionary.
-            trial (optuna.Trial, optional): Optuna trial for hyperparameter optimization.
         """
         self.model = model
         self.optimizer = optimizer
@@ -33,7 +31,6 @@ class Trainer:
         self.warmup_scheduler = warmup_scheduler
         self.criterion = criterion
         self.device = device
-        self.trial = trial
 
         # Training configurations
         self.mode = config['mode']
@@ -285,14 +282,6 @@ class Trainer:
             val_loss, val_acc = self.val_epoch(val_dataloader)
 
             best_val_loss = min(val_loss, best_val_loss)
-
-            if self.trial:
-                self.trial.report(val_loss, epoch)
-
-                if self.trial.should_prune():
-                    print('Prune')
-                    wandb.finish()
-                    raise optuna.exceptions.TrialPruned()
 
             # Learning rate update
             if self.warmup_scheduler and epoch < self.warmup_epochs:
