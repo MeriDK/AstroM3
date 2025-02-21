@@ -170,6 +170,12 @@ Training a model on metadata without CLIP pre-training using the full dataset:
 python src/main.py --config configs/config-meta-full.yaml
 ```
 
+**Note:** Since subdatasets are sampled from predefined train/val/test splits, CLIP models must be pre-trained and fine-tuned using the same random seed to maintain data consistency.  
+
+For example:  
+✅ Pre-training on the full dataset with random seed `66` and fine-tuning on a 25% subset with the same seed `66` ensures proper data separation.  
+❌ Pre-training on the full dataset with random seed `123` and fine-tuning on a 25% subset with seed `66` will cause data leakage, as some training samples from pre-train will end up in the validation or test set in fine-tune.
+
 ---
 
 ## Citation
