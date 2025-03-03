@@ -43,6 +43,8 @@ This version retains the raw dataset structure and uses a custom loading script.
 Loading:
 ```python
 from datasets import load_dataset
+
+# Load the default full dataset with seed 42
 dataset = load_dataset("MeriDK/AstroM3Dataset", trust_remote_code=True)
 ```
 
@@ -66,10 +68,15 @@ Specify the configuration using the format `{sub}_{random_seed}`.
 - **Subset options**: `full`, `sub50`, `sub25`, `sub10`
 - **Random seeds**: `42`, `0`, `66`, `12`, `123`
 
-Example:
+Examples:
 ```python
 from datasets import load_dataset
+
+# Load the full dataset with seed 42
 dataset = load_dataset("MeriDK/AstroM3Processed", name="full_42")
+
+# Load the 25% subset sampled using seed 123
+dataset = load_dataset("MeriDK/AstroM3Processed", name="sub25_123")
 ```
 
 More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Processed)
