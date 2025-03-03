@@ -33,53 +33,9 @@ AstroM3 is a multimodal time-series astronomy dataset for variable star classifi
 
 The dataset is automatically downloaded during training, so no manual loading is required.
 
-### 1. MeriDK/AstroM3Dataset
+More details about the original dataset: [MeriDK/AstroM3Dataset](https://huggingface.co/datasets/MeriDK/AstroM3Dataset)
 
-This version retains the raw dataset structure and uses a custom loading script. It offers:
-
-- Efficient storage by reusing files across different subsets and seeds.
-- Suitable for exploratory data analysis (EDA) of original files.
-
-Loading:
-```python
-from datasets import load_dataset
-
-# Load the default full dataset with seed 42
-dataset = load_dataset("MeriDK/AstroM3Dataset", trust_remote_code=True)
-```
-
-The default configuration is **full_42** (entire dataset with seed 42).
-To load a specific subset and seed, use {subset}_{seed} as the name:
-```python
-from datasets import load_dataset
-
-# Load the 25% subset sampled using seed 123
-dataset = load_dataset("MeriDK/AstroM3Dataset", name="sub25_123", trust_remote_code=True)
-```
-
-More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Dataset)
-
-### 2. MeriDK/AstroM3Processed
-
-This version contains the preprocessed data ready for training.
-Loading follows the same process but does not require `trust_remote_code=True`. 
-Specify the configuration using the format `{sub}_{random_seed}`.
-
-- **Subset options**: `full`, `sub50`, `sub25`, `sub10`
-- **Random seeds**: `42`, `0`, `66`, `12`, `123`
-
-Examples:
-```python
-from datasets import load_dataset
-
-# Load the full dataset with seed 42
-dataset = load_dataset("MeriDK/AstroM3Processed", name="full_42")
-
-# Load the 25% subset sampled using seed 123
-dataset = load_dataset("MeriDK/AstroM3Processed", name="sub25_123")
-```
-
-More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Processed)
+More details about the preprocessed dataset: [MeriDK/AstroM3Processed](https://huggingface.co/datasets/MeriDK/AstroM3Processed)
 
 ---
 
