@@ -26,21 +26,12 @@ wandb login
 
 ## Data
 
-AstroM3Dataset is a multimodal time-series astronomy dataset for variable star classification. It includes photometry, spectra, and metadata features and is available in two formats on Hugging Face Datasets:
+AstroM3 is a multimodal time-series astronomy dataset for variable star classification. It includes photometry, spectra, metadata and is available in two formats on Hugging Face Datasets:
 
 1. MeriDK/AstroM3Dataset - Original data using a custom loading script.
-2. MeriDK/AstroM3Processed - Preprocessed version in Parquet and Hugging Face format for faster loading.
+2. MeriDK/AstroM3Processed - Preprocessed version ready for training.
 
 The dataset is automatically downloaded during training, so no manual loading is required.
-
-Each sample consists of:
-
-- Photometry: Light curve data `(N, 3)` (time, flux, flux error).
-- Spectra: Spectral observations `(M, 3)` (wavelength, flux, flux error).
-- Metadata:
-  - `meta_cols`: Dictionary of metadata feature names and values.
-  - `photo_cols`: Dictionary of photometric feature names and values.
-- Label: Class name.
 
 ### 1. MeriDK/AstroM3Dataset
 
@@ -48,7 +39,6 @@ This version retains the raw dataset structure and uses a custom loading script.
 
 - Efficient storage by reusing files across different subsets and seeds.
 - Suitable for exploratory data analysis (EDA) of original files.
-- A longer initial load time as Hugging Face processes the dataset.
 
 Loading:
 ```python
@@ -56,36 +46,30 @@ from datasets import load_dataset
 dataset = load_dataset("MeriDK/AstroM3Dataset", trust_remote_code=True)
 ```
 
-To load specific subsets and seeds:
+The default configuration is **full_42** (entire dataset with seed 42).
+To load a specific subset and seed, use {subset}_{seed} as the name:
 ```python
-dataset = load_dataset("MeriDK/AstroM3Dataset", name="full_42", trust_remote_code=True)
-```
+from datasets import load_dataset
 
-To load objects with preprocessed and normalized metadata:
-```python
-dataset = load_dataset("MeriDK/AstroM3Dataset", name="full_42_norm", trust_remote_code=True)
+# Load the 25% subset sampled using seed 123
+dataset = load_dataset("MeriDK/AstroM3Dataset", name="sub25_123", trust_remote_code=True)
 ```
 
 More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Dataset)
 
 ### 2. MeriDK/AstroM3Processed
 
-This version contains the same data but converted into Parquet for faster access.
-
-- **Pros**: Fast loading times.
-- **Cons**: Less space-efficient due to duplicated files across subsets and seeds.
-- **Usage**: Used for model training.
-
-Loading follows the same process but does not require `trust_remote_code=True`. Specify the configuration using the format `{sub}_{random_seed}{norm}`.
+This version contains the preprocessed data ready for training.
+Loading follows the same process but does not require `trust_remote_code=True`. 
+Specify the configuration using the format `{sub}_{random_seed}`.
 
 - **Subset options**: `full`, `sub50`, `sub25`, `sub10`
 - **Random seeds**: `42`, `0`, `66`, `12`, `123`
-- **Normalization**: `""` (default) or `"_norm"`
 
 Example:
 ```python
 from datasets import load_dataset
-dataset = load_dataset("MeriDK/AstroM3Processed", name="full_42_norm")
+dataset = load_dataset("MeriDK/AstroM3Processed", name="full_42")
 ```
 
 More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Processed)
@@ -96,13 +80,13 @@ More details: [Hugging Face](https://huggingface.co/datasets/MeriDK/AstroM3Proce
 ```
 AstroM3/
 ├── src/
-│   ├── dataset.py             # Custom PyTorch dataset that processes photometry, spectra, and metadata.
+│   ├── data.py                # Load the datasets from Hugging Face.
 │   ├── informer.py            # Includes the Informer layers
 │   ├── loss.py                # Defines `CLIPLoss` for multimodal contrastive learning
 │   ├── main.py                # Loads configs and setups training
 │   ├── model.py               # Defines photometry (Informer), spectra (GalSpecNet), metadata (MetaModel), and multi modal (AstroM3) models
 │   ├── trainer.py             # Handles training and evaluation
-│   ├── utils.py               # Utility functions for model initialization, schedulers, and seed setting
+│   ├── utils.py               # Utility functions for schedulers and seed setting
 ├── configs/                    
 │   ├── config-clip-full.yaml
 │   ├── config-meta-full.yaml
@@ -181,7 +165,7 @@ For example:
 ---
 
 ## Citation
-If you find this repo or data useful, please cite our paper 🤗
+🤗 If you find this repo or data useful, please cite our paper 🤗
 ```
 @article{rizhko2024astrom,
   title={AstroM $\^{} 3$: A self-supervised multimodal model for astronomy},
