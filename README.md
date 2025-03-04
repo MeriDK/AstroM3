@@ -127,6 +127,42 @@ For example:
 
 ---
 
+## Evaluation
+
+You can evaluate trained models using either **Weights & Biases (W&B) runs** or **pretrained models from Hugging Face**.
+
+To evaluate all runs across all modes, subsets, seeds, and pretraining settings:
+```sh
+python src/eval.py
+```
+**Note:** Don't forget to update `run_ids` in `eval.py` to match the IDs of your own W&B runs.
+
+To evaluate a specific run, provide its W&B run ID:
+```
+python src/eval.py --run_id <wandb_run_id>
+```
+
+To evaluate all runs for a specific mode (`spectra`, `meta`, `photo`, `all`), specify:
+```
+python src/eval.py --mode spectra
+```
+You can further filter by:
+- Pretraining status (`--pretrain true/false`)
+- Dataset subset (`--sub sub10, sub25, sub50, full`)
+- Random seed (`--seed 42, 0, 66, 12, 123`)
+Example:
+```
+python src/eval.py --mode all --pretrain true --sub full --seed 42
+```
+
+To evaluate the models stored on Hugging Face (`pretrain=true`, `sub=full`, `seed=42`):
+```
+python src/eval.py --use_hf
+```
+The results are stored in `results.json`. To change the path specify `--res_path`.
+
+---
+
 ## Citation
 🤗 If you find this repo or data useful, please cite our paper 🤗
 ```
