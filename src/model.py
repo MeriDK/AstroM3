@@ -1,7 +1,135 @@
 import torch
 import torch.nn as nn
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 from huggingface_hub import PyTorchModelHubMixin
 from informer import DataEmbedding, EncoderLayer, AttentionLayer, ProbAttention, Encoder
+
+
+def get_model(config):
+    """
+    Initializes and returns the model based on the mode in the configuration.
+
+    Args:
+        config (dict): Dictionary containing model parameters and settings.
+
+    Returns:
+        torch.nn.Module: Initialized model.
+    """
+    if config['mode'] == 'photo':
+        # Initialize the photometry model (Informer)
+        model = Informer(
+            classification=True if config['mode'] == 'photo' else False,
+            num_classes=config['num_classes'],
+            seq_len=config['seq_len'],
+            enc_in=config['p_enc_in'],
+            d_model=config['p_d_model'],
+            dropout=config['p_dropout'],
+            factor=config['p_factor'],
+            output_attention=config['p_output_attention'],
+            n_heads=config['p_n_heads'],
+            d_ff=config['p_d_ff'],
+            activation=config['p_activation'],
+            e_layers=config['p_e_layers']
+        )
+    elif config['mode'] == 'spectra':
+        # Initialize the spectra model (GalSpecNet)
+        model = GalSpecNet(
+            classification=True if config['mode'] == 'spectra' else False,
+            num_classes=config['num_classes'],
+            dropout_rate=config['s_dropout'],
+            conv_channels=config['s_conv_channels'],
+            kernel_size=config['s_kernel_size'],
+            mp_kernel_size=config['s_mp_kernel_size']
+        )
+    elif config['mode'] == 'meta':
+        # Initialize the metadata model (MetaModel)
+        model = MetaModel(
+            classification=True if config['mode'] == 'meta' else False,
+            num_classes=config['num_classes'],
+            input_dim=config['m_input_dim'],
+            hidden_dim=config['m_hidden_dim'],
+            dropout=config['m_dropout']
+        )
+    else:
+        # Initialize the AstroM3 multimodal model
+        model = AstroM3(
+            classification=True if config['mode'] == 'all' else False,
+            num_classes=config['num_classes'],
+            hidden_dim=config['hidden_dim'],
+            fusion=config['fusion'],
+
+            # Photometry model params
+            seq_len=config['seq_len'],
+            p_enc_in=config['p_enc_in'],
+            p_d_model=config['p_d_model'],
+            p_dropout=config['p_dropout'],
+            p_factor=config['p_factor'],
+            p_output_attention=config['p_output_attention'],
+            p_n_heads=config['p_n_heads'],
+            p_d_ff=config['p_d_ff'],
+            p_activation=config['p_activation'],
+            p_e_layers=config['p_e_layers'],
+
+            # Spectra model params
+            s_dropout=config['s_dropout'],
+            s_conv_channels=config['s_conv_channels'],
+            s_kernel_size=config['s_kernel_size'],
+            s_mp_kernel_size=config['s_mp_kernel_size'],
+
+            # Metadata model params
+            m_input_dim=config['m_input_dim'],
+            m_hidden_dim=config['m_hidden_dim'],
+            m_dropout=config['m_dropout']
+        )
+
+    return model
+
+
+def load_clip_weights(model, pretrain_path, mode):
+    """
+    Loads pre-trained CLIP model weights and applies them to the specified modality encoder.
+
+    Args:
+        model (torch.nn.Module): The model instance to which the weights will be loaded.
+        pretrain_path (str): Path to the pre-trained weights file. Can be a local `.pth` file or a Hugging Face model repository.
+        mode (str): Specifies which modality encoder to load weights for.
+                    Options: 'photo' (photometry), 'spectra' (spectra), 'meta' (metadata).
+                    If not one of these, the full CLIP model is expected.
+
+    Returns:
+        torch.nn.Module: The model with loaded pre-trained weights.
+    """
+    # Load local weights
+    if pretrain_path.endswith('.pth'):
+        weights = torch.load(pretrain_path, weights_only=True)
+    else:
+        # Load weights from Hugging Face
+        weights_path = hf_hub_download(repo_id=pretrain_path, filename="model.safetensors")
+        weights = load_file(weights_path)
+
+    # Determine the weights prefix based on the selected mode
+    if mode == 'photo':
+        weights_prefix = 'photometry_encoder'
+    elif mode == 'spectra':
+        weights_prefix = 'spectra_encoder'
+    elif mode == 'meta':
+        weights_prefix = 'metadata_encoder'
+    else:
+        weights_prefix = None
+
+    # Extract only relevant weights based on the mode
+    if weights_prefix:
+        weights = {k[len(weights_prefix) + 1:]: v for k, v in weights.items() if k.startswith(weights_prefix)}
+
+    if len(weights) == 0:
+        raise ValueError('Can load pretrained weights only from the CLIP model')
+
+    # Load the extracted weights into the model
+    model.load_state_dict(weights, strict=False)
+    print('Loaded weights from {}'.format(pretrain_path))
+
+    return model
 
 
 class Informer(nn.Module, PyTorchModelHubMixin):

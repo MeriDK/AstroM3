@@ -1,113 +1,8 @@
+import yaml
 import random
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau, LinearLR
-from model import Informer, GalSpecNet, MetaModel, AstroM3
-
-CLASSES = ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
-
-
-def get_model(config):
-    """
-    Initializes and returns the model based on the mode in the configuration.
-
-    Args:
-        config (dict): Dictionary containing model parameters and settings.
-
-    Returns:
-        torch.nn.Module: Initialized model.
-    """
-    if config['mode'] == 'photo':
-        # Initialize the photometry model (Informer)
-        model = Informer(
-            classification=True if config['mode'] == 'photo' else False,
-            num_classes=config['num_classes'],
-            seq_len=config['seq_len'],
-            enc_in=config['p_enc_in'],
-            d_model=config['p_d_model'],
-            dropout=config['p_dropout'],
-            factor=config['p_factor'],
-            output_attention=config['p_output_attention'],
-            n_heads=config['p_n_heads'],
-            d_ff=config['p_d_ff'],
-            activation=config['p_activation'],
-            e_layers=config['p_e_layers']
-        )
-    elif config['mode'] == 'spectra':
-        # Initialize the spectra model (GalSpecNet)
-        model = GalSpecNet(
-            classification=True if config['mode'] == 'spectra' else False,
-            num_classes=config['num_classes'],
-            dropout_rate=config['s_dropout'],
-            conv_channels=config['s_conv_channels'],
-            kernel_size=config['s_kernel_size'],
-            mp_kernel_size=config['s_mp_kernel_size']
-        )
-    elif config['mode'] == 'meta':
-        # Initialize the metadata model (MetaModel)
-        model = MetaModel(
-            classification=True if config['mode'] == 'meta' else False,
-            num_classes=config['num_classes'],
-            input_dim=config['m_input_dim'],
-            hidden_dim=config['m_hidden_dim'],
-            dropout=config['m_dropout']
-        )
-    else:
-        # Initialize the AstroM3 multimodal model
-        model = AstroM3(
-            classification=True if config['mode'] == 'all' else False,
-            num_classes=config['num_classes'],
-            hidden_dim=config['hidden_dim'],
-            fusion=config['fusion'],
-
-            # Photometry model params
-            seq_len=config['seq_len'],
-            p_enc_in=config['p_enc_in'],
-            p_d_model=config['p_d_model'],
-            p_dropout=config['p_dropout'],
-            p_factor=config['p_factor'],
-            p_output_attention=config['p_output_attention'],
-            p_n_heads=config['p_n_heads'],
-            p_d_ff=config['p_d_ff'],
-            p_activation=config['p_activation'],
-            p_e_layers=config['p_e_layers'],
-
-            # Spectra model params
-            s_dropout=config['s_dropout'],
-            s_conv_channels=config['s_conv_channels'],
-            s_kernel_size=config['s_kernel_size'],
-            s_mp_kernel_size=config['s_mp_kernel_size'],
-
-            # Metadata model params
-            m_input_dim=config['m_input_dim'],
-            m_hidden_dim=config['m_hidden_dim'],
-            m_dropout=config['m_dropout']
-        )
-
-    # Load CLIP pretrained weights if specified
-    if config['use_pretrain']:
-        weights = torch.load(config['use_pretrain'], weights_only=True)
-
-        # Determine the weights prefix based on the selected mode
-        if config['mode'] == 'photo':
-            weights_prefix = 'photometry_encoder'
-        elif config['mode'] == 'spectra':
-            weights_prefix = 'spectra_encoder'
-        elif config['mode'] == 'meta':
-            weights_prefix = 'metadata_encoder'
-        else:
-            weights_prefix = None
-
-        if weights_prefix:
-            weights = {k[len(weights_prefix) + 1:]: v for k, v in weights.items() if k.startswith(weights_prefix)}
-
-        if len(weights) == 0:
-            raise ValueError('Can load pretrained weights only from CLIP model')
-
-        model.load_state_dict(weights, strict=False)
-        print('Loaded weights from {}'.format(config['use_pretrain']))
-
-    return model
 
 
 def get_schedulers(config, optimizer):
@@ -151,6 +46,21 @@ def set_random_seeds(random_seed):
     random.seed(random_seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def load_config(config_path):
+    """
+    Load model and training configurations from a YAML file.
+
+    Args:
+        config_path (str): Path to the YAML configuration file.
+
+    Returns:
+        dict: Parsed configuration dictionary.
+    """
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+    return config
 
 
 class EarlyStopping:
