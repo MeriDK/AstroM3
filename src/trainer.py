@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import seaborn as sns
 from matplotlib import pyplot as plt
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, accuracy_score
 from tqdm import tqdm
 import wandb
 import os
@@ -197,9 +197,12 @@ class Trainer:
         self.model.train()
         self.zero_stats()
 
-        for photometry, photometry_mask, spectra, metadata, labels in tqdm(train_dataloader):
-            photometry, photometry_mask = photometry.to(self.device), photometry_mask.to(self.device)
-            spectra, metadata, labels = spectra.to(self.device), metadata.to(self.device), labels.to(self.device)
+        for batch in tqdm(train_dataloader):
+            photometry = batch['photometry'].to(self.device)
+            photometry_mask = batch['photometry_mask'].to(self.device)
+            spectra = batch['spectra'].to(self.device)
+            metadata = batch['metadata'].to(self.device)
+            labels = batch['label'].to(self.device)
 
             self.optimizer.zero_grad()
 
@@ -245,9 +248,12 @@ class Trainer:
         self.zero_stats()
 
         with torch.no_grad():
-            for photometry, photometry_mask, spectra, metadata, labels in tqdm(val_dataloader):
-                photometry, photometry_mask = photometry.to(self.device), photometry_mask.to(self.device)
-                spectra, metadata, labels = spectra.to(self.device), metadata.to(self.device), labels.to(self.device)
+            for batch in tqdm(val_dataloader):
+                photometry = batch['photometry'].to(self.device)
+                photometry_mask = batch['photometry_mask'].to(self.device)
+                spectra = batch['spectra'].to(self.device)
+                metadata = batch['metadata'].to(self.device)
+                labels = batch['label'].to(self.device)
 
                 if self.mode == 'clip':
                     self.step_clip(photometry, photometry_mask, spectra, metadata)
@@ -315,14 +321,15 @@ class Trainer:
 
         return best_val_loss
 
-    def evaluate(self, val_dataloader, id2target):
+    def evaluate(self, val_dataloader, id2label, plot=True):
         """
         Evaluate the model on the validation dataset.
         This function computes and logs (if wandb is enabled) absolute and percentage-based confusion matrices.
 
         Args:
             val_dataloader (torch.utils.data.DataLoader): Dataloader for the validation set.
-            id2target (dict): Mapping from numerical class indices to class names.
+            id2label (list): Mapping from numerical class indices to class names.
+            plot (bool): Whether to generate confusion matrix plots. Default is True.
 
         Returns:
             np.ndarray: The computed absolute confusion matrix.
@@ -333,10 +340,13 @@ class Trainer:
         all_predicted_labels = []
 
         # Iterate over the validation set
-        for photometry, photometry_mask, spectra, metadata, labels in tqdm(val_dataloader):
+        for batch in tqdm(val_dataloader):
             with torch.no_grad():
-                photometry, photometry_mask = photometry.to(self.device), photometry_mask.to(self.device)
-                spectra, metadata = spectra.to(self.device), metadata.to(self.device)
+                photometry = batch['photometry'].to(self.device)
+                photometry_mask = batch['photometry_mask'].to(self.device)
+                spectra = batch['spectra'].to(self.device)
+                metadata = batch['metadata'].to(self.device)
+                labels = batch['label']
 
                 logits = self.get_logits(photometry, photometry_mask, spectra, metadata)
                 probabilities = torch.nn.functional.softmax(logits, dim=1)
@@ -345,30 +355,32 @@ class Trainer:
                 all_true_labels.extend(labels.numpy())
                 all_predicted_labels.extend(predicted_labels.cpu().numpy())
 
-        # Compute confusion matrices
-        conf_matrix = confusion_matrix(all_true_labels, all_predicted_labels)
-        conf_matrix_percent = 100 * conf_matrix / conf_matrix.sum(axis=1)[:, np.newaxis]
+        accuracy = accuracy_score(all_true_labels, all_predicted_labels)
 
-        labels = [id2target[i] for i in range(len(conf_matrix))]
+        if plot:
+            # Compute confusion matrices
+            conf_matrix = confusion_matrix(all_true_labels, all_predicted_labels)
+            conf_matrix_percent = 100 * conf_matrix / conf_matrix.sum(axis=1)[:, np.newaxis]
+            labels = [id2label[i] for i in range(len(conf_matrix))]
 
-        # Create plots for absolute and percentage-based confusion matrices
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 7))
+            # Create plots for absolute and percentage-based confusion matrices
+            fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 7))
 
-        # Plot absolute values confusion matrix
-        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels, ax=axes[0])
-        axes[0].set_xlabel('Predicted')
-        axes[0].set_ylabel('True')
-        axes[0].set_title('Confusion Matrix - Absolute Values')
+            # Plot absolute values confusion matrix
+            sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels, ax=axes[0])
+            axes[0].set_xlabel('Predicted')
+            axes[0].set_ylabel('True')
+            axes[0].set_title('Confusion Matrix - Absolute Values')
 
-        # Plot percentage values confusion matrix
-        sns.heatmap(conf_matrix_percent, annot=True, fmt='.0f', cmap='Blues', xticklabels=labels, yticklabels=labels,
-                    ax=axes[1])
-        axes[1].set_xlabel('Predicted')
-        axes[1].set_ylabel('True')
-        axes[1].set_title('Confusion Matrix - Percentages')
+            # Plot percentage values confusion matrix
+            sns.heatmap(conf_matrix_percent, annot=True, fmt='.0f', cmap='Blues', xticklabels=labels, yticklabels=labels,
+                        ax=axes[1])
+            axes[1].set_xlabel('Predicted')
+            axes[1].set_ylabel('True')
+            axes[1].set_title('Confusion Matrix - Percentages')
 
-        # Log to wandb
-        if self.use_wandb:
-            wandb.log({'conf_matrix': wandb.Image(fig)})
+            # Log to wandb
+            if self.use_wandb:
+                wandb.log({'conf_matrix': wandb.Image(fig)})
 
-        return conf_matrix
+        return accuracy
