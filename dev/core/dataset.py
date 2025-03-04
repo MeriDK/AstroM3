@@ -7,7 +7,7 @@ from astropy.io import fits
 from scipy import stats
 from io import BytesIO
 
-from dev.util import ParallelZipFile as ZipFile
+from dev.util.parallelzipfile import ParallelZipFile as ZipFile
 
 
 class PSMDataset(Dataset):
