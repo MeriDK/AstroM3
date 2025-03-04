@@ -14,11 +14,11 @@ from model import get_model, load_clip_weights
 
 # Dictionary for pre-trained CLIP weights paths
 CLIP_WEIGHTS = {
-    42: './weights/2025-02-27-19-55-6jb7me31/weights-best.pt',
-    66: './weights/2025-02-27-20-52-6vu1qioj/weights-best.pt',
-    0: './weights/2025-02-27-20-52-5ee7tjcc/weights-best.pt',
-    12: './weights/2025-02-27-19-55-et132353/weights-best.pt',
-    123: './weights/2025-02-27-19-55-ylaxu03p/weights-best.pt'
+    42: './weights/2025-02-27-19-55-6jb7me31/weights-best.pth',
+    66: './weights/2025-02-27-20-52-6vu1qioj/weights-best.pth',
+    0: './weights/2025-02-27-20-52-5ee7tjcc/weights-best.pth',
+    12: './weights/2025-02-27-19-55-et132353/weights-best.pth',
+    123: './weights/2025-02-27-19-55-ylaxu03p/weights-best.pth'
 }
 
 
