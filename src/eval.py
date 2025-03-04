@@ -94,9 +94,6 @@ def eval_run(run, use_hf=False):
     config = run.config
     config['use_wandb'] = False
 
-    if use_hf:
-        assert config['data_sub'] == 'full' and config['random_seed'] == 42 and config['use_pretrain'] is True
-
     set_random_seeds(config['random_seed'])
 
     _, _, test = get_datasets(config['dataset'],
@@ -108,13 +105,14 @@ def eval_run(run, use_hf=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = get_model(config)
-    model = model.to(device)
 
     if use_hf:
         model = model.from_pretrained(HF_MODELS[config['mode']])
     else:
         weights_path = os.path.join(config['weights_path'] + '-' + run.id, 'weights-best.pth')
         model.load_state_dict(torch.load(weights_path, weights_only=True))
+
+    model = model.to(device)
 
     trainer = Trainer(model=model, optimizer=None, scheduler=None, warmup_scheduler=None, criterion=criterion,
                       device=device, config=config)
@@ -154,7 +152,7 @@ def update_results(res_path, mode, pretrain, sub, seed, acc):
             json.dump(results, f, indent=4)
 
 
-def main(mode=None, pretrain=None, sub=None, seed=None, run_id=None, res_path='results.json'):
+def main(mode=None, pretrain=None, sub=None, seed=None, run_id=None, use_hf=False, res_path='results.json'):
     """Main function to evaluate models and update results.json."""
     api = wandb.Api()
 
@@ -174,6 +172,17 @@ def main(mode=None, pretrain=None, sub=None, seed=None, run_id=None, res_path='r
         update_results(res_path, mode, pretrain, sub, seed, acc)
         return
 
+    # HF models can be evaluated only with these parameters
+    if use_hf:
+        assert pretrain is True or pretrain is None, "Hugging Face models can only be evaluated with pretrain=True."
+        assert sub == 'full' or sub is None, ("Hugging Face models can only be evaluated on the full dataset "
+                                              "(sub='full').")
+        assert seed == 42 or seed is None, "Hugging Face models can only be evaluated with seed=42."
+
+        pretrain = True
+        sub = 'full'
+        seed = 42
+
     # Otherwise, evaluate based on parameters
     modes = [mode] if mode else run_ids.keys()
     for m in modes:
@@ -187,7 +196,7 @@ def main(mode=None, pretrain=None, sub=None, seed=None, run_id=None, res_path='r
                     run = api.run(f'AstroM3/{run_id}')
 
                     # Evaluate the run
-                    acc = eval_run(run)
+                    acc = eval_run(run, use_hf=use_hf)
 
                     # Update the results
                     update_results(res_path, m, p, s, se, acc)
@@ -211,5 +220,5 @@ if __name__ == '__main__':
     parser.add_argument('--res_path', type=str, default='results.json', help='Path to store results')
 
     args = parser.parse_args()
-    main(mode=args.mode, pretrain=args.pretrain, sub=args.sub, seed=args.seed, run_id=args.run_id,
+    main(mode=args.mode, pretrain=args.pretrain, sub=args.sub, seed=args.seed, run_id=args.run_id, use_hf=args.use_hf,
          res_path=args.res_path)
