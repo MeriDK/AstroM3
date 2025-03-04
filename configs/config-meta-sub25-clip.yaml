@@ -8,21 +8,21 @@ classes: ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 num_classes: 10
 seq_len: 200
 mode: 'meta'
-data_sub: 'sub10'
+data_sub: 'sub25'
 
 # Metadata model parameters
 m_input_dim: 34
 m_hidden_dim: 512
-m_dropout: 0.1479383968245285
+m_dropout: 0.25757540425528347
 
 # Training settings
-use_pretrain: False
+use_pretrain: True
 epochs: 50
 batch_size: 512
-lr: 0.009586101387197628
-beta1: 0.960355167407052
+lr: 0.004520044947678716
+beta1: 0.9526839420827397
 beta2: 0.999
-weight_decay: 0.0016692845865161668
+weight_decay: 5.153687950489435e-05
 early_stopping_patience: 6
 clip_grad: False
 save_weights: True
@@ -30,6 +30,6 @@ weights_path: './weights/'
 
 # Scheduler settings
 scheduler: 'ReduceLROnPlateau'
-scheduler_factor: 0.48040637245293494
+scheduler_factor: 0.6509265130370205
 scheduler_patience: 3
 warmup_epochs: 10

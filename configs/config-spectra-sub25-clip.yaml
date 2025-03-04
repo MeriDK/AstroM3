@@ -7,29 +7,31 @@ dataset: 'MeriDK/AstroM3Processed'
 classes: ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 num_classes: 10
 seq_len: 200
-mode: 'meta'
-data_sub: 'sub10'
+mode: 'spectra'
+data_sub: 'sub25'
 
-# Metadata model parameters
-m_input_dim: 34
-m_hidden_dim: 512
-m_dropout: 0.1479383968245285
+# Spectra model parameters
+s_dropout: 0.2830021669497409
+s_conv_channels: [3, 64, 64, 32, 32]
+s_kernel_size: 3
+s_mp_kernel_size: 4
 
 # Training settings
-use_pretrain: False
+use_pretrain: True
 epochs: 50
 batch_size: 512
-lr: 0.009586101387197628
-beta1: 0.960355167407052
+lr: 0.009690629396876515
+beta1: 0.7075183324799572
 beta2: 0.999
-weight_decay: 0.0016692845865161668
+weight_decay: 2.6702232400117227e-05
 early_stopping_patience: 6
-clip_grad: False
+clip_grad: True
+clip_value: 5
 save_weights: True
 weights_path: './weights/'
 
 # Scheduler settings
 scheduler: 'ReduceLROnPlateau'
-scheduler_factor: 0.48040637245293494
+scheduler_factor: 0.10374821156112284
 scheduler_patience: 3
 warmup_epochs: 10

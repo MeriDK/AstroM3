@@ -3,7 +3,7 @@ project: 'AstroM3'
 use_wandb: True
 
 # Dataset settings
-dataset: 'MeriDK/AstroM3Dataset'
+dataset: 'MeriDK/AstroM3Processed'
 classes: ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 num_classes: 10
 seq_len: 200
@@ -16,7 +16,7 @@ m_hidden_dim: 512
 m_dropout: 0.13521790585984286
 
 # Training settings
-use_pretrain: null
+use_pretrain: False
 epochs: 50
 batch_size: 512
 lr: 0.008218587195918435
