@@ -37,6 +37,8 @@ More details about the original dataset: [AstroMLCore/AstroM3Dataset](https://hu
 
 More details about the preprocessed dataset: [AstroMLCore/AstroM3Processed](https://huggingface.co/datasets/AstroMLCore/AstroM3Processed)
 
+More details in the paper: [AstroM<sup>3</sup>: A self-supervised multimodal model for astronomy](https://arxiv.org/abs/2411.08842)
+
 ---
 
 ## Project Structure
