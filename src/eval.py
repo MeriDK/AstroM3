@@ -12,10 +12,10 @@ from trainer import Trainer
 from data import get_datasets
 
 HF_MODELS = {
-    'spectra': "MeriDK/AstroM3-CLIP-spectra",
-    'meta': "MeriDK/AstroM3-CLIP-meta",
-    'photo': "MeriDK/AstroM3-CLIP-photo",
-    'all': "MeriDK/AstroM3-CLIP-all"
+    'spectra': "AstroMLCore/AstroM3-CLIP-spectra",
+    'meta': "AstroMLCore/AstroM3-CLIP-meta",
+    'photo': "AstroMLCore/AstroM3-CLIP-photo",
+    'all': "AstroMLCore/AstroM3-CLIP-all"
 }
 
 run_ids = {
