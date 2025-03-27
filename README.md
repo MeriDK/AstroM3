@@ -28,14 +28,14 @@ wandb login
 
 AstroM3 is a multimodal time-series astronomy dataset for variable star classification. It includes photometry, spectra, metadata and is available in two formats on Hugging Face Datasets:
 
-1. MeriDK/AstroM3Dataset - Original data using a custom loading script.
-2. MeriDK/AstroM3Processed - Preprocessed version ready for training.
+1. AstroMLCore/AstroM3Dataset - Original data using a custom loading script.
+2. AstroMLCore/AstroM3Processed - Preprocessed version ready for training.
 
 The dataset is automatically downloaded during training, so no manual loading is required.
 
-More details about the original dataset: [MeriDK/AstroM3Dataset](https://huggingface.co/datasets/MeriDK/AstroM3Dataset)
+More details about the original dataset: [AstroMLCore/AstroM3Dataset](https://huggingface.co/datasets/AstroMLCore/AstroM3Dataset)
 
-More details about the preprocessed dataset: [MeriDK/AstroM3Processed](https://huggingface.co/datasets/MeriDK/AstroM3Processed)
+More details about the preprocessed dataset: [AstroMLCore/AstroM3Processed](https://huggingface.co/datasets/AstroMLCore/AstroM3Processed)
 
 ---
 
