@@ -3,7 +3,7 @@ project: 'AstroM3'
 use_wandb: True
 
 # Dataset settings
-dataset: 'MeriDK/AstroM3Processed'
+dataset: 'AstroMLCore/AstroM3Processed'
 classes: ['EW', 'SR', 'EA', 'RRAB', 'EB', 'ROT', 'RRC', 'HADS', 'M', 'DSCT']
 num_classes: 10
 seq_len: 200
