@@ -97,7 +97,7 @@ def main():
             config['pretrain_path'] = CLIP_WEIGHTS[config['random_seed']]
         else:
             # Otherwise, use the Hugging Face Hub model with the corresponding seed
-            config['pretrain_path'] = f"MeriDK/AstroM3-CLIP-{config['random_seed']}"
+            config['pretrain_path'] = f"AstroMLCore/AstroM3-CLIP-{config['random_seed']}"
             print(f"CLIP weights not found at {CLIP_WEIGHTS[config['random_seed']]}.\n"
                   f"Using Hugging Face pretrained weights from {config['pretrain_path']}")
 
