@@ -175,3 +175,9 @@ The results are stored in `results.json`. To change the path specify `--res_path
   year={2024}
 }
 ```
+
+## License
+
+The code in this repository is licensed under the [MIT License](LICENSE).
+
+The pre-trained model weights are licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
